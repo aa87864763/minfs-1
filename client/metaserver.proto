@@ -1,0 +1,161 @@
+syntax = "proto3";
+
+// 与 dataserver.proto 使用同一个包名，便于管理
+package dfs_project; 
+
+option go_package = "./pb";
+
+// 引入谷歌官方的时间戳类型，用于标准的时间表示
+import "google/protobuf/timestamp.proto";
+
+// MetaServerService 定义了元数据服务器需要暴露的所有 gRPC 接口
+service MetaServerService {
+    // === 1. 提供给 Client 的核心文件系统接口 ===
+
+    // 对应考核点 A1: 创建文件或目录
+    rpc CreateNode(CreateNodeRequest) returns (SimpleResponse);
+    
+    // 对应考核点 A2: 获取单个文件或目录的属性信息
+    rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse);
+    
+    // 对应考核点 A2: 列出目录下的所有条目
+    rpc ListDirectory(ListDirectoryRequest) returns (ListDirectoryResponse);
+    
+    // 对应考核点 A3: 删除文件或目录 (支持递归)
+    rpc DeleteNode(DeleteNodeRequest) returns (SimpleResponse);
+
+    // 对应考核点 A4: 为写入/读取文件做准备，获取数据块的位置信息
+    rpc GetBlockLocations(GetBlockLocationsRequest) returns (GetBlockLocationsResponse);
+    
+    // 对应考核点 A4: 当 Client 写完一个文件后，调用此接口来最终确认
+    rpc FinalizeWrite(FinalizeWriteRequest) returns (SimpleResponse);
+    
+    // 对应考核点 A5, A6, B7: 获取集群信息，用于展示副本分布等
+    rpc GetClusterInfo(GetClusterInfoRequest) returns (GetClusterInfoResponse);
+
+    // === 2. 提供给 DataServer 的接口 ===
+
+    // 接收来自 DataServer 的心跳和块报告
+    rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+    // === 3. (可选高级) 提供给 Slave MetaServer 的接口 ===
+
+    // 用于主从节点之间，实时同步元数据操作日志 (WAL)
+    rpc SyncWAL(stream LogEntry) returns (SimpleResponse); 
+}
+
+
+// --- 消息体定义 ---
+
+// 通用的简单响应，用于表示操作成功与否
+message SimpleResponse {
+    bool success = 1;
+}
+
+// 节点类型枚举
+enum NodeType {
+    FILE = 0;
+    DIRECTORY = 1;
+}
+
+// 文件或目录的核心元数据结构 (简化的 Inode)
+message NodeInfo {
+    uint64 inode = 1;      // 唯一的 inode 编号
+    string path = 2;       // 完整路径
+    NodeType type = 3;     // 类型：文件或目录
+    uint64 size = 4;       // 文件大小 (目录为0)
+    google.protobuf.Timestamp mod_time = 5; // 最后修改时间
+    uint32 replication = 6; // 副本数 (比如 3)
+}
+
+// 一个数据块的所有副本位置
+message BlockLocations {
+    uint64 block_id = 1;
+    repeated string locations = 2; // DataServer 地址列表 (IP:Port)
+}
+
+// CreateNode
+message CreateNodeRequest {
+    string path = 1;
+    NodeType type = 2;
+}
+
+// GetNodeInfo
+message GetNodeInfoRequest {
+    string path = 1;
+}
+message GetNodeInfoResponse {
+    NodeInfo node_info = 1;
+}
+
+// ListDirectory
+message ListDirectoryRequest {
+    string path = 1;
+}
+message ListDirectoryResponse {
+    repeated NodeInfo nodes = 1; // 返回该目录下所有子节点的列表
+}
+
+// DeleteNode
+message DeleteNodeRequest {
+    string path = 1;
+    bool recursive = 2; // 是否递归删除
+}
+
+// GetBlockLocations
+message GetBlockLocationsRequest {
+    string path = 1;
+    uint64 size = 2; // 对于写操作，Client 告诉 metaServer 文件总大小，以便规划块
+}
+message GetBlockLocationsResponse {
+    uint64 inode = 1; // 返回分配的 inode
+    repeated BlockLocations block_locations = 2;
+}
+
+// FinalizeWrite
+message FinalizeWriteRequest {
+    string path = 1;
+    uint64 inode = 2;
+    uint64 size = 3;
+}
+
+// GetClusterInfo
+message DataServerInfo {
+    string id = 1;
+    string addr = 2;
+    uint64 block_count = 3;
+    uint64 free_space = 4;
+}
+message GetClusterInfoRequest {}
+message GetClusterInfoResponse {
+    repeated DataServerInfo dataservers = 1;
+}
+
+// Heartbeat
+message HeartbeatRequest {
+    string dataserver_id = 1;
+    string dataserver_addr = 2;
+    uint64 block_count = 3;
+    uint64 free_space = 4;
+    repeated uint64 block_ids_report = 5; // 完整的块报告
+}
+// 心跳响应可以携带来自 metaServer 的指令
+message Command {
+    enum Action {
+        DELETE_BLOCK = 0;     // 删除块 (用于垃圾回收)
+        COPY_BLOCK = 1;       // 复制块 (用于副本修复)
+    }
+    Action action = 1;
+    uint64 block_id = 2;
+    // 对于 COPY_BLOCK，这里是源地址
+    // 对于其他指令，可以为空
+    repeated string targets = 3; 
+}
+message HeartbeatResponse {
+    repeated Command commands = 1;
+}
+
+// SyncWAL (用于主从同步)
+message LogEntry {
+    bytes data = 1; // 序列化后的操作指令
+}

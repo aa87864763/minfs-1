@@ -1,0 +1,51 @@
+syntax = "proto3";
+package dfs_project;
+option go_package = "./pb";
+
+service DataServerService {
+    rpc WriteBlock(stream WriteBlockRequest) returns (WriteBlockResponse);
+    rpc ReadBlock(ReadBlockRequest) returns (stream ReadBlockResponse);
+    rpc DeleteBlock(DeleteBlockRequest) returns (DeleteBlockResponse);
+    rpc CopyBlock(CopyBlockRequest) returns (CopyBlockResponse);
+}
+
+message WriteBlockRequest {
+    oneof content {
+        WriteBlockMetadata metadata = 1;
+        bytes chunk_data = 2;
+    }
+}
+
+message WriteBlockMetadata {
+    uint64 block_id = 1;
+    repeated string replica_locations = 2; 
+}
+
+message WriteBlockResponse {
+    bool success = 1;
+}
+
+message ReadBlockRequest {
+    uint64 block_id = 1;
+}
+
+message ReadBlockResponse {
+    bytes chunk_data = 1;
+}
+
+message DeleteBlockRequest {
+    uint64 block_id = 1;
+}
+
+message DeleteBlockResponse {
+    bool success = 1;
+}
+
+message CopyBlockRequest {
+    uint64 block_id = 1;
+    string source_address = 2;
+}
+
+message CopyBlockResponse {
+    bool success = 1;
+}

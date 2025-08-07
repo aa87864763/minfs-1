@@ -1,0 +1,28 @@
+syntax = "proto3";
+package dfs_project;
+option go_package = "./pb";
+
+service MetaServerService {
+    rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+
+message HeartbeatRequest {
+    string dataserver_id = 1;
+    string dataserver_addr = 2;
+    uint64 block_count = 3;
+    uint64 free_space = 4;
+    repeated uint64 block_ids_report = 5;
+}
+
+message HeartbeatResponse {
+    message Command {
+        enum Action {
+            DELETE_BLOCK = 0;
+            REPLICATE_BLOCK = 1;
+        }
+        Action action = 1;
+        uint64 block_id = 2;
+        repeated string targets = 3;
+    }
+    repeated Command commands = 1;
+}

@@ -1,0 +1,23 @@
+# DataServer 2 Configuration
+server:
+  listen_address: "0.0.0.0:8002"
+  dataserver_id: "dataserver-02"
+
+storage:
+  data_root_path: "./data2"
+  max_storage_size: 0
+  block_size: 4194304
+
+etcd:
+  endpoints: ["localhost:2379"]
+  dial_timeout: 5
+  lease_ttl: 30
+
+metaserver:
+  address: "localhost:9090"
+  heartbeat_interval: 10
+  connection_timeout: 5
+
+logging:
+  level: "info"
+  output: "stdout"
