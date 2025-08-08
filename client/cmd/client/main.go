@@ -15,8 +15,8 @@ var globalClient *client.MinifsClient
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: go run main.go <metaserver_address>")
-		fmt.Println("Example: go run main.go localhost:8080")
+		fmt.Println("Usage: ../bin/client <metaserver_address>")
+		fmt.Println("Example: ../bin/client localhost:9090")
 		os.Exit(1)
 	}
 
@@ -76,6 +76,9 @@ func executeCommand(command string, args []string) {
 	case "cluster":
 		cmdCluster(args)
 		
+	case "replicas", "repl":
+		cmdReplicas(args)
+		
 	case "create":
 		cmdCreate(args)
 		
@@ -128,6 +131,7 @@ func showHelp() {
 	fmt.Println("")
 	fmt.Println("Cluster:")
 	fmt.Println("  cluster                  - Show cluster information")
+	fmt.Println("  replicas [path]          - Show file replication status (all files if no path)")
 	fmt.Println("")
 	fmt.Println("Examples:")
 	fmt.Println("  mkdir /test")
@@ -142,6 +146,18 @@ func showHelp() {
 
 func cmdCluster(args []string) {
 	_, err := globalClient.GetClusterInfo()
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+	}
+}
+
+func cmdReplicas(args []string) {
+	path := ""
+	if len(args) > 0 {
+		path = args[0]
+	}
+	
+	_, err := globalClient.GetReplicationInfo(path)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 	}
