@@ -32,6 +32,9 @@ service MetaServerService {
     
     // 对应考核点 A5, A6, B7: 获取集群信息，用于展示副本分布等
     rpc GetClusterInfo(GetClusterInfoRequest) returns (GetClusterInfoResponse);
+    
+    // 获取文件的副本分布情况
+    rpc GetReplicationInfo(GetReplicationInfoRequest) returns (GetReplicationInfoResponse);
 
     // === 2. 提供给 DataServer 的接口 ===
 
@@ -66,6 +69,7 @@ message NodeInfo {
     uint64 size = 4;       // 文件大小 (目录为0)
     google.protobuf.Timestamp mod_time = 5; // 最后修改时间
     uint32 replication = 6; // 副本数 (比如 3)
+    string md5 = 7;        // 文件MD5哈希值
 }
 
 // 一个数据块的所有副本位置
@@ -117,6 +121,7 @@ message FinalizeWriteRequest {
     string path = 1;
     uint64 inode = 2;
     uint64 size = 3;
+    string md5 = 4;  // 文件MD5哈希值
 }
 
 // GetClusterInfo
@@ -153,6 +158,36 @@ message Command {
 }
 message HeartbeatResponse {
     repeated Command commands = 1;
+}
+
+// GetReplicationInfo
+message GetReplicationInfoRequest {
+    string path = 1;  // 文件路径，为空表示查询所有文件
+}
+
+message ReplicationStatus {
+    string path = 1;                    // 文件路径
+    uint64 inode = 2;                  // 文件inode
+    uint64 size = 3;                   // 文件大小
+    uint32 expected_replicas = 4;      // 期望副本数
+    uint32 actual_replicas = 5;        // 实际副本数
+    repeated BlockReplicationInfo blocks = 6; // 各块的副本信息
+    string status = 7;                 // 状态: "healthy", "under_replicated", "over_replicated"
+}
+
+message BlockReplicationInfo {
+    uint64 block_id = 1;              // 块ID
+    repeated string locations = 2;     // 实际存储位置
+    repeated string expected_locations = 3; // 期望存储位置
+    uint32 replica_count = 4;         // 实际副本数
+}
+
+message GetReplicationInfoResponse {
+    repeated ReplicationStatus files = 1;
+    uint32 total_files = 2;
+    uint32 healthy_files = 3;
+    uint32 under_replicated_files = 4;
+    uint32 over_replicated_files = 5;
 }
 
 // SyncWAL (用于主从同步)
