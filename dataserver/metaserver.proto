@@ -14,15 +14,17 @@ message HeartbeatRequest {
     repeated uint64 block_ids_report = 5;
 }
 
-message HeartbeatResponse {
-    message Command {
-        enum Action {
-            DELETE_BLOCK = 0;
-            REPLICATE_BLOCK = 1;
-        }
-        Action action = 1;
-        uint64 block_id = 2;
-        repeated string targets = 3;
+message Command {
+    enum Action {
+        DELETE_BLOCK = 0;     // 删除块 (用于垃圾回收)
+        COPY_BLOCK = 1;       // 复制块 (用于副本修复)
     }
+    Action action = 1;
+    uint64 block_id = 2;
+    // 对于 COPY_BLOCK，这里是源地址
+    // 对于其他指令，可以为空
+    repeated string targets = 3; 
+}
+message HeartbeatResponse {
     repeated Command commands = 1;
 }
