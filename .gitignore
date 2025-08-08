@@ -43,7 +43,6 @@ ehthumbs.db
 Thumbs.db
 
 # Data directories
-data*/
 metadb/
 
 # Configuration files with sensitive data
