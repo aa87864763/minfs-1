@@ -21,15 +21,16 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	MetaServerService_CreateNode_FullMethodName        = "/dfs_project.MetaServerService/CreateNode"
-	MetaServerService_GetNodeInfo_FullMethodName       = "/dfs_project.MetaServerService/GetNodeInfo"
-	MetaServerService_ListDirectory_FullMethodName     = "/dfs_project.MetaServerService/ListDirectory"
-	MetaServerService_DeleteNode_FullMethodName        = "/dfs_project.MetaServerService/DeleteNode"
-	MetaServerService_GetBlockLocations_FullMethodName = "/dfs_project.MetaServerService/GetBlockLocations"
-	MetaServerService_FinalizeWrite_FullMethodName     = "/dfs_project.MetaServerService/FinalizeWrite"
-	MetaServerService_GetClusterInfo_FullMethodName    = "/dfs_project.MetaServerService/GetClusterInfo"
-	MetaServerService_Heartbeat_FullMethodName         = "/dfs_project.MetaServerService/Heartbeat"
-	MetaServerService_SyncWAL_FullMethodName           = "/dfs_project.MetaServerService/SyncWAL"
+	MetaServerService_CreateNode_FullMethodName         = "/dfs_project.MetaServerService/CreateNode"
+	MetaServerService_GetNodeInfo_FullMethodName        = "/dfs_project.MetaServerService/GetNodeInfo"
+	MetaServerService_ListDirectory_FullMethodName      = "/dfs_project.MetaServerService/ListDirectory"
+	MetaServerService_DeleteNode_FullMethodName         = "/dfs_project.MetaServerService/DeleteNode"
+	MetaServerService_GetBlockLocations_FullMethodName  = "/dfs_project.MetaServerService/GetBlockLocations"
+	MetaServerService_FinalizeWrite_FullMethodName      = "/dfs_project.MetaServerService/FinalizeWrite"
+	MetaServerService_GetClusterInfo_FullMethodName     = "/dfs_project.MetaServerService/GetClusterInfo"
+	MetaServerService_GetReplicationInfo_FullMethodName = "/dfs_project.MetaServerService/GetReplicationInfo"
+	MetaServerService_Heartbeat_FullMethodName          = "/dfs_project.MetaServerService/Heartbeat"
+	MetaServerService_SyncWAL_FullMethodName            = "/dfs_project.MetaServerService/SyncWAL"
 )
 
 // MetaServerServiceClient is the client API for MetaServerService service.
@@ -52,6 +53,8 @@ type MetaServerServiceClient interface {
 	FinalizeWrite(ctx context.Context, in *FinalizeWriteRequest, opts ...grpc.CallOption) (*SimpleResponse, error)
 	// 对应考核点 A5, A6, B7: 获取集群信息，用于展示副本分布等
 	GetClusterInfo(ctx context.Context, in *GetClusterInfoRequest, opts ...grpc.CallOption) (*GetClusterInfoResponse, error)
+	// 获取文件的副本分布情况
+	GetReplicationInfo(ctx context.Context, in *GetReplicationInfoRequest, opts ...grpc.CallOption) (*GetReplicationInfoResponse, error)
 	// 接收来自 DataServer 的心跳和块报告
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 	// 用于主从节点之间，实时同步元数据操作日志 (WAL)
@@ -136,6 +139,16 @@ func (c *metaServerServiceClient) GetClusterInfo(ctx context.Context, in *GetClu
 	return out, nil
 }
 
+func (c *metaServerServiceClient) GetReplicationInfo(ctx context.Context, in *GetReplicationInfoRequest, opts ...grpc.CallOption) (*GetReplicationInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetReplicationInfoResponse)
+	err := c.cc.Invoke(ctx, MetaServerService_GetReplicationInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *metaServerServiceClient) Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(HeartbeatResponse)
@@ -179,6 +192,8 @@ type MetaServerServiceServer interface {
 	FinalizeWrite(context.Context, *FinalizeWriteRequest) (*SimpleResponse, error)
 	// 对应考核点 A5, A6, B7: 获取集群信息，用于展示副本分布等
 	GetClusterInfo(context.Context, *GetClusterInfoRequest) (*GetClusterInfoResponse, error)
+	// 获取文件的副本分布情况
+	GetReplicationInfo(context.Context, *GetReplicationInfoRequest) (*GetReplicationInfoResponse, error)
 	// 接收来自 DataServer 的心跳和块报告
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	// 用于主从节点之间，实时同步元数据操作日志 (WAL)
@@ -213,6 +228,9 @@ func (UnimplementedMetaServerServiceServer) FinalizeWrite(context.Context, *Fina
 }
 func (UnimplementedMetaServerServiceServer) GetClusterInfo(context.Context, *GetClusterInfoRequest) (*GetClusterInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetClusterInfo not implemented")
+}
+func (UnimplementedMetaServerServiceServer) GetReplicationInfo(context.Context, *GetReplicationInfoRequest) (*GetReplicationInfoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetReplicationInfo not implemented")
 }
 func (UnimplementedMetaServerServiceServer) Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Heartbeat not implemented")
@@ -367,6 +385,24 @@ func _MetaServerService_GetClusterInfo_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MetaServerService_GetReplicationInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetReplicationInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MetaServerServiceServer).GetReplicationInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MetaServerService_GetReplicationInfo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MetaServerServiceServer).GetReplicationInfo(ctx, req.(*GetReplicationInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _MetaServerService_Heartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HeartbeatRequest)
 	if err := dec(in); err != nil {
@@ -426,6 +462,10 @@ var MetaServerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetClusterInfo",
 			Handler:    _MetaServerService_GetClusterInfo_Handler,
+		},
+		{
+			MethodName: "GetReplicationInfo",
+			Handler:    _MetaServerService_GetReplicationInfo_Handler,
 		},
 		{
 			MethodName: "Heartbeat",
