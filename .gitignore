@@ -6,6 +6,9 @@
 *.dylib
 bin/
 *.test
+*.txt
+*.dat
+*.json
 
 # Test binary, built with `go test -c`
 *.test
