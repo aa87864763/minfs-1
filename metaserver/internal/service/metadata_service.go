@@ -279,7 +279,7 @@ func (ms *MetadataService) ListDirectory(path string) ([]*pb.NodeInfo, error) {
 }
 
 // DeleteNode 删除节点
-func (ms *MetadataService) DeleteNode(path string, recursive bool) ([]uint64, error) {
+func (ms *MetadataService) DeleteNode(path string, recursive bool) ([]model.BlockWithLocations, error) {
 	path = filepath.Clean(path)
 	if path == "." {
 		path = "/"
@@ -289,7 +289,7 @@ func (ms *MetadataService) DeleteNode(path string, recursive bool) ([]uint64, er
 		return nil, fmt.Errorf("cannot delete root directory")
 	}
 	
-	var blocksToDelete []uint64
+	var blocksToDelete []model.BlockWithLocations
 	
 	err := ms.db.Update(func(txn *badger.Txn) error {
 		// 获取节点信息
@@ -326,7 +326,7 @@ func (ms *MetadataService) DeleteNode(path string, recursive bool) ([]uint64, er
 			// 递归删除子节点
 			if recursive {
 				for _, child := range children {
-					childBlocks, err := ms.deleteNodeRecursiveInTx(txn, child.Inode, child.Path)
+					childBlocks, err := ms.deleteNodeRecursiveWithLocationsInTx(txn, child.Inode, child.Path)
 					if err != nil {
 						return err
 					}
@@ -334,8 +334,8 @@ func (ms *MetadataService) DeleteNode(path string, recursive bool) ([]uint64, er
 				}
 			}
 		} else {
-			// 如果是文件，收集需要删除的块
-			blocks, err := ms.getFileBlocksInTx(txn, inodeID)
+			// 如果是文件，收集需要删除的块及其位置信息
+			blocks, err := ms.getFileBlocksWithLocationsInTx(txn, inodeID)
 			if err != nil {
 				return err
 			}
@@ -385,6 +385,53 @@ func (ms *MetadataService) deleteNodeRecursiveInTx(txn *badger.Txn, inodeID uint
 	} else {
 		// 如果是文件，收集需要删除的块
 		blocks, err := ms.getFileBlocksInTx(txn, inodeID)
+		if err != nil {
+			return nil, err
+		}
+		blocksToDelete = append(blocksToDelete, blocks...)
+	}
+	
+	// 删除节点本身
+	err = ms.deleteNodeInTx(txn, inodeID, path)
+	return blocksToDelete, err
+}
+
+// deleteNodeRecursiveWithLocationsInTx 在事务中递归删除节点并返回块位置信息
+func (ms *MetadataService) deleteNodeRecursiveWithLocationsInTx(txn *badger.Txn, inodeID uint64, path string) ([]model.BlockWithLocations, error) {
+	var blocksToDelete []model.BlockWithLocations
+	
+	// 获取节点信息
+	inodeKey := fmt.Sprintf("%s%d", model.PrefixInode, inodeID)
+	item, err := txn.Get([]byte(inodeKey))
+	if err != nil {
+		return nil, err
+	}
+	
+	var nodeInfo pb.NodeInfo
+	err = item.Value(func(val []byte) error {
+		return proto.Unmarshal(val, &nodeInfo)
+	})
+	if err != nil {
+		return nil, err
+	}
+	
+	// 如果是目录，递归删除子节点
+	if nodeInfo.Type == pb.NodeType_DIRECTORY {
+		children, err := ms.listDirectoryInTx(txn, inodeID)
+		if err != nil {
+			return nil, err
+		}
+		
+		for _, child := range children {
+			childBlocks, err := ms.deleteNodeRecursiveWithLocationsInTx(txn, child.Inode, child.Path)
+			if err != nil {
+				return nil, err
+			}
+			blocksToDelete = append(blocksToDelete, childBlocks...)
+		}
+	} else {
+		// 如果是文件，收集需要删除的块及其位置信息
+		blocks, err := ms.getFileBlocksWithLocationsInTx(txn, inodeID)
 		if err != nil {
 			return nil, err
 		}
@@ -501,6 +548,38 @@ func (ms *MetadataService) getFileBlocksInTx(txn *badger.Txn, inodeID uint64) ([
 	return blocks, nil
 }
 
+// getFileBlocksWithLocationsInTx 在事务中获取文件的所有块及其位置信息
+func (ms *MetadataService) getFileBlocksWithLocationsInTx(txn *badger.Txn, inodeID uint64) ([]model.BlockWithLocations, error) {
+	var blocks []model.BlockWithLocations
+	
+	prefix := fmt.Sprintf("%s%d/", model.PrefixBlock, inodeID)
+	opts := badger.DefaultIteratorOptions
+	it := txn.NewIterator(opts)
+	defer it.Close()
+	
+	for it.Seek([]byte(prefix)); it.ValidForPrefix([]byte(prefix)); it.Next() {
+		item := it.Item()
+		
+		err := item.Value(func(val []byte) error {
+			var blockLocs pb.BlockLocations
+			if err := proto.Unmarshal(val, &blockLocs); err != nil {
+				return err
+			}
+			block := model.BlockWithLocations{
+				BlockID:   blockLocs.BlockId,
+				Locations: blockLocs.Locations,
+			}
+			blocks = append(blocks, block)
+			return nil
+		})
+		if err != nil {
+			continue
+		}
+	}
+	
+	return blocks, nil
+}
+
 // deleteKeysWithPrefixInTx 在事务中删除具有指定前缀的所有键
 func (ms *MetadataService) deleteKeysWithPrefixInTx(txn *badger.Txn, prefix string) error {
 	opts := badger.DefaultIteratorOptions
@@ -563,8 +642,8 @@ func (ms *MetadataService) GetBlockMappings(inodeID uint64) ([]*pb.BlockLocation
 	return blockMappings, err
 }
 
-// FinalizeWrite 完成文件写入，更新文件大小和修改时间
-func (ms *MetadataService) FinalizeWrite(path string, inodeID uint64, size uint64) error {
+// FinalizeWrite 完成文件写入，更新文件大小、修改时间和MD5哈希
+func (ms *MetadataService) FinalizeWrite(path string, inodeID uint64, size uint64, md5Hash string) error {
 	path = filepath.Clean(path)
 	if path == "." {
 		path = "/"
@@ -589,6 +668,7 @@ func (ms *MetadataService) FinalizeWrite(path string, inodeID uint64, size uint6
 		// 更新文件信息
 		nodeInfo.Size = size
 		nodeInfo.ModTime = timestamppb.Now()
+		nodeInfo.Md5 = md5Hash
 		
 		// 重新序列化并保存
 		data, err := proto.Marshal(&nodeInfo)
@@ -693,5 +773,35 @@ func (ms *MetadataService) RemoveGCEntry(blockID uint64) error {
 	return ms.db.Update(func(txn *badger.Txn) error {
 		key := fmt.Sprintf("%s%d", model.PrefixGC, blockID)
 		return txn.Delete([]byte(key))
+	})
+}
+
+// TraverseAllFiles 遍历所有文件节点
+func (ms *MetadataService) TraverseAllFiles(callback func(*pb.NodeInfo) error) error {
+	return ms.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		
+		// 遍历所有 inode 条目
+		inodePrefix := []byte(model.PrefixInode)
+		for it.Seek(inodePrefix); it.ValidForPrefix(inodePrefix); it.Next() {
+			item := it.Item()
+			
+			err := item.Value(func(val []byte) error {
+				var nodeInfo pb.NodeInfo
+				if err := proto.Unmarshal(val, &nodeInfo); err != nil {
+					return err
+				}
+				
+				return callback(&nodeInfo)
+			})
+			
+			if err != nil {
+				return err
+			}
+		}
+		
+		return nil
 	})
 }

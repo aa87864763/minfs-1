@@ -111,8 +111,8 @@ func (h *MetaServerHandler) DeleteNode(ctx context.Context, req *pb.DeleteNodeRe
 	}
 	
 	// 调度块删除
-	for _, blockID := range blocksToDelete {
-		h.schedulerService.ScheduleBlockDeletion(blockID, []string{})
+	for _, block := range blocksToDelete {
+		h.schedulerService.ScheduleBlockDeletion(block.BlockID, block.Locations)
 	}
 	
 	log.Printf("DeleteNode success: %s (%d blocks scheduled for deletion)", req.Path, len(blocksToDelete))
@@ -197,7 +197,7 @@ func (h *MetaServerHandler) GetBlockLocations(ctx context.Context, req *pb.GetBl
 
 // FinalizeWrite 完成文件写入
 func (h *MetaServerHandler) FinalizeWrite(ctx context.Context, req *pb.FinalizeWriteRequest) (*pb.SimpleResponse, error) {
-	log.Printf("FinalizeWrite request: path=%s, inode=%d, size=%d", req.Path, req.Inode, req.Size)
+	log.Printf("FinalizeWrite request: path=%s, inode=%d, size=%d, md5=%s", req.Path, req.Inode, req.Size, req.Md5)
 	
 	if req.Path == "" {
 		return &pb.SimpleResponse{Success: false}, fmt.Errorf("path cannot be empty")
@@ -207,13 +207,13 @@ func (h *MetaServerHandler) FinalizeWrite(ctx context.Context, req *pb.FinalizeW
 		return &pb.SimpleResponse{Success: false}, fmt.Errorf("invalid inode ID")
 	}
 	
-	err := h.metadataService.FinalizeWrite(req.Path, req.Inode, req.Size)
+	err := h.metadataService.FinalizeWrite(req.Path, req.Inode, req.Size, req.Md5)
 	if err != nil {
 		log.Printf("FinalizeWrite error: %v", err)
 		return &pb.SimpleResponse{Success: false}, err
 	}
 	
-	log.Printf("FinalizeWrite success: %s", req.Path)
+	log.Printf("FinalizeWrite success: %s (MD5: %s)", req.Path, req.Md5)
 	return &pb.SimpleResponse{Success: true}, nil
 }
 
@@ -284,6 +284,163 @@ func (h *MetaServerHandler) Heartbeat(ctx context.Context, req *pb.HeartbeatRequ
 	}
 	
 	return response, nil
+}
+
+// GetReplicationInfo 获取文件副本分布信息
+func (h *MetaServerHandler) GetReplicationInfo(ctx context.Context, req *pb.GetReplicationInfoRequest) (*pb.GetReplicationInfoResponse, error) {
+	log.Printf("GetReplicationInfo request: path=%s", req.Path)
+	
+	var files []*pb.ReplicationStatus
+	var totalFiles, healthyFiles, underReplicatedFiles, overReplicatedFiles uint32
+	
+	if req.Path != "" {
+		// 查询特定文件的副本信息
+		nodeInfo, err := h.metadataService.GetNodeInfo(req.Path)
+		if err != nil {
+			log.Printf("GetReplicationInfo error: file not found %s: %v", req.Path, err)
+			return nil, fmt.Errorf("文件不存在: %s", req.Path)
+		}
+		
+		if nodeInfo.Type != pb.NodeType_FILE {
+			return nil, fmt.Errorf("路径不是文件: %s", req.Path)
+		}
+		
+		replicationStatus, err := h.buildReplicationStatus(nodeInfo)
+		if err != nil {
+			return nil, err
+		}
+		
+		files = []*pb.ReplicationStatus{replicationStatus}
+		totalFiles = 1
+		
+		switch replicationStatus.Status {
+		case "healthy":
+			healthyFiles = 1
+		case "under_replicated":
+			underReplicatedFiles = 1
+		case "over_replicated":
+			overReplicatedFiles = 1
+		}
+	} else {
+		// 查询所有文件的副本信息 - 遍历所有文件
+		allFiles, err := h.getAllFileNodes()
+		if err != nil {
+			return nil, fmt.Errorf("获取所有文件失败: %v", err)
+		}
+		
+		for _, nodeInfo := range allFiles {
+			replicationStatus, err := h.buildReplicationStatus(nodeInfo)
+			if err != nil {
+				log.Printf("GetReplicationInfo warning: failed to build status for %s: %v", nodeInfo.Path, err)
+				continue
+			}
+			
+			files = append(files, replicationStatus)
+			totalFiles++
+			
+			switch replicationStatus.Status {
+			case "healthy":
+				healthyFiles++
+			case "under_replicated":
+				underReplicatedFiles++
+			case "over_replicated":
+				overReplicatedFiles++
+			}
+		}
+	}
+	
+	log.Printf("GetReplicationInfo success: total=%d, healthy=%d, under=%d, over=%d", 
+		totalFiles, healthyFiles, underReplicatedFiles, overReplicatedFiles)
+	
+	return &pb.GetReplicationInfoResponse{
+		Files:                files,
+		TotalFiles:          totalFiles,
+		HealthyFiles:         healthyFiles,
+		UnderReplicatedFiles: underReplicatedFiles,
+		OverReplicatedFiles:  overReplicatedFiles,
+	}, nil
+}
+
+// buildReplicationStatus 构建单个文件的副本状态信息
+func (h *MetaServerHandler) buildReplicationStatus(nodeInfo *pb.NodeInfo) (*pb.ReplicationStatus, error) {
+	// 获取文件的所有块映射
+	blockMappings, err := h.metadataService.GetBlockMappings(nodeInfo.Inode)
+	if err != nil {
+		return nil, fmt.Errorf("获取块映射失败: %v", err)
+	}
+	
+	var blockInfos []*pb.BlockReplicationInfo
+	var totalReplicas uint32 = 0
+	var minReplicas uint32 = ^uint32(0) // 最大值
+	
+	for _, blockMapping := range blockMappings {
+		actualLocations := make([]string, 0)
+		
+		// 检查每个声明的位置是否真实存在这个块
+		for _, location := range blockMapping.Locations {
+			dataServer := h.clusterService.GetDataServerByAddr(location)
+			if dataServer != nil && dataServer.HasBlock(blockMapping.BlockId) {
+				actualLocations = append(actualLocations, location)
+			}
+		}
+		
+		replicaCount := uint32(len(actualLocations))
+		totalReplicas += replicaCount
+		
+		if replicaCount < minReplicas {
+			minReplicas = replicaCount
+		}
+		
+		blockInfo := &pb.BlockReplicationInfo{
+			BlockId:           blockMapping.BlockId,
+			Locations:         actualLocations,
+			ExpectedLocations: blockMapping.Locations,
+			ReplicaCount:      replicaCount,
+		}
+		
+		blockInfos = append(blockInfos, blockInfo)
+	}
+	
+	var actualReplicas uint32
+	if len(blockMappings) > 0 {
+		actualReplicas = totalReplicas / uint32(len(blockMappings))
+	}
+	
+	// 确定健康状态
+	status := "healthy"
+	if minReplicas < nodeInfo.Replication {
+		status = "under_replicated"
+	} else if minReplicas > nodeInfo.Replication {
+		status = "over_replicated"
+	}
+	
+	return &pb.ReplicationStatus{
+		Path:             nodeInfo.Path,
+		Inode:            nodeInfo.Inode,
+		Size:             nodeInfo.Size,
+		ExpectedReplicas: nodeInfo.Replication,
+		ActualReplicas:   actualReplicas,
+		Blocks:           blockInfos,
+		Status:           status,
+	}, nil
+}
+
+// getAllFileNodes 获取所有文件节点信息
+func (h *MetaServerHandler) getAllFileNodes() ([]*pb.NodeInfo, error) {
+	var files []*pb.NodeInfo
+	
+	err := h.metadataService.TraverseAllFiles(func(nodeInfo *pb.NodeInfo) error {
+		if nodeInfo.Type == pb.NodeType_FILE {
+			files = append(files, nodeInfo)
+		}
+		return nil
+	})
+	
+	if err != nil {
+		return nil, err
+	}
+	
+	return files, nil
 }
 
 // SyncWAL 同步 WAL（用于主从复制，暂未实现）

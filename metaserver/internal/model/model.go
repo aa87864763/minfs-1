@@ -120,8 +120,27 @@ func (ds *DataServerInfo) MarkUnhealthy() {
 	ds.IsHealthy = false
 }
 
+// GetReportedBlocks 获取报告的块列表 (线程安全读取)
+func (ds *DataServerInfo) GetReportedBlocks() map[uint64]bool {
+	ds.mutex.RLock()
+	defer ds.mutex.RUnlock()
+	
+	// 创建副本以避免外部修改
+	blocks := make(map[uint64]bool)
+	for blockID, exists := range ds.ReportedBlocks {
+		blocks[blockID] = exists
+	}
+	return blocks
+}
+
 // BlockMapping 表示数据块在各个 DataServer 上的分布
 type BlockMapping struct {
+	BlockID   uint64   // 数据块 ID
+	Locations []string // 存储该块的 DataServer 地址列表
+}
+
+// BlockWithLocations 表示带有位置信息的数据块
+type BlockWithLocations struct {
 	BlockID   uint64   // 数据块 ID
 	Locations []string // 存储该块的 DataServer 地址列表
 }
