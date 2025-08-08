@@ -93,6 +93,9 @@ func (c *MinifsClient) GetStatus(path string) (*pb.NodeInfo, error) {
 	if resp.NodeInfo.ModTime != nil {
 		fmt.Printf("  ModTime: %v\n", resp.NodeInfo.ModTime)
 	}
+	if resp.NodeInfo.Md5 != "" {
+		fmt.Printf("  MD5: %s\n", resp.NodeInfo.Md5)
+	}
 
 	return resp.NodeInfo, nil
 }
@@ -182,11 +185,16 @@ func (c *MinifsClient) WriteFile(path string, data []byte) error {
 		}
 	}
 
-	// 3. 完成写入
+	// 3. 计算MD5哈希
+	hash := md5.Sum(data)
+	md5Hash := fmt.Sprintf("%x", hash)
+
+	// 完成写入
 	finalizeReq := &pb.FinalizeWriteRequest{
 		Path:  path,
 		Inode: resp.Inode,
 		Size:  uint64(len(data)),
+		Md5:   md5Hash,
 	}
 
 	finalizeResp, err := c.metaClient.FinalizeWrite(context.Background(), finalizeReq)
@@ -198,9 +206,7 @@ func (c *MinifsClient) WriteFile(path string, data []byte) error {
 		return fmt.Errorf("failed to finalize write for %s: server returned failure", path)
 	}
 
-	// 计算并显示MD5
-	hash := md5.Sum(data)
-	fmt.Printf("Successfully wrote file %s (size: %d bytes, MD5: %x)\n", path, len(data), hash)
+	fmt.Printf("Successfully wrote file %s (size: %d bytes, MD5: %s)\n", path, len(data), md5Hash)
 	return nil
 }
 
@@ -264,7 +270,17 @@ func (c *MinifsClient) writeBlockToDataServer(address string, blockId uint64, da
 
 // A4: 读文件
 func (c *MinifsClient) ReadFile(path string) ([]byte, error) {
-	// 1. 获取文件信息和块位置
+	// 1. 获取文件信息以获得原始MD5
+	statusReq := &pb.GetNodeInfoRequest{
+		Path: path,
+	}
+	statusResp, err := c.metaClient.GetNodeInfo(context.Background(), statusReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file info for %s: %v", path, err)
+	}
+	originalMD5 := statusResp.NodeInfo.Md5
+
+	// 2. 获取文件块位置
 	req := &pb.GetBlockLocationsRequest{
 		Path: path,
 		Size: 0, // 读操作不需要指定大小
@@ -277,7 +293,7 @@ func (c *MinifsClient) ReadFile(path string) ([]byte, error) {
 
 	var allData []byte
 
-	// 2. 从DataServer读取数据
+	// 3. 从DataServer读取数据
 	for _, blockLoc := range resp.BlockLocations {
 		blockData, err := c.readBlockFromDataServer(blockLoc.Locations[0], blockLoc.BlockId)
 		if err != nil {
@@ -286,9 +302,20 @@ func (c *MinifsClient) ReadFile(path string) ([]byte, error) {
 		allData = append(allData, blockData...)
 	}
 
-	// 计算并显示MD5
+	// 4. 计算当前数据的MD5并验证
 	hash := md5.Sum(allData)
-	fmt.Printf("Successfully read file %s (size: %d bytes, MD5: %x)\n", path, len(allData), hash)
+	currentMD5 := fmt.Sprintf("%x", hash)
+	
+	fmt.Printf("Successfully read file %s (size: %d bytes)\n", path, len(allData))
+	fmt.Printf("  Original MD5: %s\n", originalMD5)
+	fmt.Printf("  Current MD5:  %s\n", currentMD5)
+	
+	if originalMD5 != "" && originalMD5 == currentMD5 {
+		fmt.Printf("  ✓ MD5 验证通过 - 文件完整性正确\n")
+	} else if originalMD5 != "" {
+		fmt.Printf("  ✗ MD5 验证失败 - 文件可能已损坏！\n")
+	}
+	
 	return allData, nil
 }
 
@@ -348,6 +375,51 @@ func (c *MinifsClient) GetClusterInfo() (*pb.GetClusterInfoResponse, error) {
 	for _, ds := range resp.Dataservers {
 		fmt.Printf("  ID: %s, Address: %s, Blocks: %d, Free Space: %d MB\n",
 			ds.Id, ds.Addr, ds.BlockCount, ds.FreeSpace/(1024*1024))
+	}
+
+	return resp, nil
+}
+
+// GetReplicationInfo 获取文件副本分布信息
+func (c *MinifsClient) GetReplicationInfo(path string) (*pb.GetReplicationInfoResponse, error) {
+	req := &pb.GetReplicationInfoRequest{
+		Path: path,
+	}
+
+	resp, err := c.metaClient.GetReplicationInfo(context.Background(), req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get replication info: %v", err)
+	}
+
+	if path != "" {
+		// 查询特定文件
+		fmt.Printf("Replication Information for %s:\n", path)
+	} else {
+		// 查询所有文件
+		fmt.Printf("Cluster-wide Replication Information:\n")
+		fmt.Printf("Total Files: %d\n", resp.TotalFiles)
+		fmt.Printf("Healthy Files: %d\n", resp.HealthyFiles)
+		fmt.Printf("Under-replicated Files: %d\n", resp.UnderReplicatedFiles)
+		fmt.Printf("Over-replicated Files: %d\n", resp.OverReplicatedFiles)
+		fmt.Printf("\nFile Details:\n")
+	}
+
+	for _, file := range resp.Files {
+		fmt.Printf("File: %s (inode: %d)\n", file.Path, file.Inode)
+		fmt.Printf("  Size: %d bytes\n", file.Size)
+		fmt.Printf("  Expected Replicas: %d\n", file.ExpectedReplicas)
+		fmt.Printf("  Actual Replicas: %d\n", file.ActualReplicas)
+		fmt.Printf("  Status: %s\n", file.Status)
+		
+		if len(file.Blocks) > 0 {
+			fmt.Printf("  Blocks (%d):\n", len(file.Blocks))
+			for _, block := range file.Blocks {
+				fmt.Printf("    Block %d: %d replicas\n", block.BlockId, block.ReplicaCount)
+				fmt.Printf("      Actual locations: %v\n", block.Locations)
+				fmt.Printf("      Expected locations: %v\n", block.ExpectedLocations)
+			}
+		}
+		fmt.Println()
 	}
 
 	return resp, nil
