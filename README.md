@@ -1,92 +1,223 @@
-# minfs
+# MiniFS 分布式文件系统
 
+MiniFS 是一个简单的分布式文件系统，采用 MetaServer + DataServer 架构，支持文件的分布式存储、三副本机制、数据完整性验证和集群管理。
 
-
-## Getting started
-
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+## 系统架构
 
 ```
-cd existing_repo
-git remote add origin http://120.92.88.48/whkj_wanyongzhi/minfs.git
-git branch -M main
-git push -uf origin main
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   Client    │    │ MetaServer  │    │   etcd      │
+│             │◄──►│             │◄──►│             │
+└─────────────┘    └─────────────┘    └─────────────┘
+                           │
+         ┌─────────────────┼─────────────────┐
+         │                 │                 │
+    ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
+    │ DataServer1 │   │ DataServer2 │   │ DataServer3 │
+    └─────────────┘   └─────────────┘   └─────────────┘
 ```
 
-## Integrate with your tools
+## 核心功能
 
-- [ ] [Set up project integrations](http://120.92.88.48/whkj_wanyongzhi/minfs/-/settings/integrations)
+### 基础功能
+- ✅ 文件创建 (create)
+- ✅ 目录创建 (mkdir)
+- ✅ 文件/目录查看属性 (stat/ls)
+- ✅ 文件/目录删除 (rm)
+- ✅ 文件读写 (read/write)
 
-## Collaborate with your team
+### 高级功能
+- ✅ 三副本存储机制
+- ✅ MD5 数据完整性验证
+- ✅ FSCK 文件系统检查和修复
+- ✅ 集群状态监控
+- ✅ 心跳机制 (10s间隔, 20s超时)
+- ✅ 垃圾回收机制
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Automatically merge when pipeline succeeds](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+## 客户端命令参考
 
-## Test and Deploy
+### 连接服务器
+```bash
+./client <metaserver_address>
+```
 
-Use the built-in continuous integration in GitLab.
+### 基本命令
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+#### 帮助命令
+```bash
+minifs> help                    # 显示所有可用命令
+minifs> h                       # 同上
+```
 
-***
+#### 退出命令
+```bash
+minifs> exit                    # 退出客户端
+minifs> quit                    # 同上
+minifs> q                       # 同上
+```
 
-# Editing this README
+### 文件系统操作
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
+#### 文件操作
+```bash
+# 创建文件
+minifs> create /test/hello.txt
 
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+# 写入文件内容
+minifs> write /test/hello.txt "Hello World!"
+minifs> write /test/hello.txt Hello World Without Quotes
 
-## Name
-Choose a self-explaining name for your project.
+# 读取文件内容  
+minifs> read /test/hello.txt
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+# 查看文件状态（包含 MD5 校验值）
+minifs> stat /test/hello.txt
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+# 删除文件
+minifs> rm /test/hello.txt
+```
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+#### 目录操作
+```bash
+# 创建目录
+minifs> mkdir /test
+minifs> mkdir /test/subdir
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+# 列出目录内容
+minifs> ls /
+minifs> ls /test
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+# 删除空目录
+minifs> rm /test/subdir
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+# 递归删除目录及其内容
+minifs> rm /test recursive
+```
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+#### 文件传输
+```bash
+# 上传本地文件到分布式文件系统
+minifs> put /path/to/local/file.txt /remote/path/file.txt
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+# 下载文件到本地
+minifs> get /remote/path/file.txt /path/to/local/downloaded.txt
+```
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+### 集群管理
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+#### 集群状态
+```bash
+# 查看集群整体状态
+minifs> cluster
+```
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+#### 副本状态
+```bash
+# 查看所有文件的副本状态
+minifs> replicas
 
-## License
-For open source projects, say how it is licensed.
+# 查看特定文件的副本状态  
+minifs> replicas /test/hello.txt
+minifs> repl /test/hello.txt        # 简写形式
+```
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+## 系统特性
+
+### 数据完整性
+- **MD5 校验**: 每个文件存储时自动计算 MD5 哈希值
+- **读取验证**: 读取文件时重新计算 MD5 并与存储值比较
+- **完整性报告**: `stat` 命令显示文件的 MD5 校验值
+
+### 高可用性
+- **三副本机制**: 每个数据块默认存储 3 个副本
+- **FSCK 检查**: 定期检查副本完整性，自动修复丢失副本
+- **心跳监控**: DataServer 每 10 秒向 MetaServer 发送心跳
+- **故障检测**: 20 秒心跳超时后标记节点为不可用
+
+### 存储优化
+- **块存储**: 文件按块分割存储，支持大文件
+- **简化命名**: 数据块文件名直接使用毫秒时间戳 (如: `1754633869123.dat`)
+- **单级目录**: DataServer 采用扁平存储结构，便于管理
+
+## 配置要求
+
+### 系统配置
+- **心跳间隔**: 10 秒
+- **心跳超时**: 20 秒  
+- **FSCK 周期**: 100 秒
+- **默认副本数**: 3
+- **块大小**: 可配置
+
+### 端口分配
+- **MetaServer**: 9090 (默认)
+- **DataServer**: 8001, 8002, 8003, 8004 (示例)
+- **etcd**: 2379 (客户端), 2380 (集群通信)
+
+## 使用示例
+
+### 完整操作流程
+```bash
+# 1. 连接到 MetaServer
+./client localhost:9090
+
+# 2. 创建目录结构
+minifs> mkdir /test
+minifs> mkdir /test/documents
+
+# 3. 创建和写入文件
+minifs> create /test/hello.txt
+minifs> write /test/hello.txt "Hello MiniFS! This is a test file."
+
+# 4. 查看文件信息
+minifs> stat /test/hello.txt
+# 输出包含: 文件大小、修改时间、MD5 校验值
+
+# 5. 读取文件内容
+minifs> read /test/hello.txt
+
+# 6. 检查副本状态
+minifs> replicas /test/hello.txt
+# 显示文件在各 DataServer 上的分布情况
+
+# 7. 查看集群状态  
+minifs> cluster
+
+# 8. 列出目录内容
+minifs> ls /test
+
+# 9. 上传本地文件
+minifs> put ./README.md /test/readme.md
+
+# 10. 下载文件
+minifs> get /test/readme.md ./downloaded_readme.md
+
+# 11. 清理
+minifs> rm /test recursive
+```
+
+### 故障恢复测试
+```bash
+# 查看文件副本分布
+minifs> replicas /test/important.txt
+
+# 模拟 DataServer 故障后，FSCK 会自动检测并修复
+# 等待 100 秒后再次检查副本状态
+minifs> replicas /test/important.txt
+```
+
+## 注意事项
+
+1. **路径格式**: 所有路径必须以 `/` 开头 (绝对路径)
+2. **文件创建**: 必须先使用 `create` 创建文件，再使用 `write` 写入内容
+3. **递归删除**: 删除非空目录时必须添加 `recursive` 参数
+4. **数据完整性**: 系统自动进行 MD5 校验，无需手动干预
+5. **集群监控**: 使用 `cluster` 和 `replicas` 命令定期检查系统状态
+
+## 错误处理
+
+常见错误及解决方法：
+- **文件不存在**: 确认文件路径正确，使用 `ls` 检查目录内容
+- **目录非空**: 删除目录时使用 `recursive` 参数
+- **权限错误**: 检查文件系统权限和 DataServer 状态
+- **网络错误**: 确认 MetaServer 和 DataServer 服务正常运行
+- **副本不足**: 等待 FSCK 自动修复，或检查 DataServer 健康状态
