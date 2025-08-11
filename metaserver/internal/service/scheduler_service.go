@@ -265,7 +265,7 @@ func (ss *SchedulerService) getAllExpectedBlocks() (map[uint64][]string, error) 
 				}
 				
 				// 只处理文件类型
-				if nodeInfo.Type != pb.NodeType_FILE {
+				if nodeInfo.Type != pb.FileType_File {
 					return nil
 				}
 				

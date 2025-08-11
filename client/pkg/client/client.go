@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	"io"
+	"strings"
 
 	"client/pb"
 	"google.golang.org/grpc"
@@ -38,7 +39,7 @@ func (c *MinifsClient) Close() error {
 func (c *MinifsClient) Create(path string) error {
 	req := &pb.CreateNodeRequest{
 		Path: path,
-		Type: pb.NodeType_FILE,
+		Type: pb.FileType_File,
 	}
 
 	resp, err := c.metaClient.CreateNode(context.Background(), req)
@@ -58,7 +59,7 @@ func (c *MinifsClient) Create(path string) error {
 func (c *MinifsClient) CreateDirectory(path string) error {
 	req := &pb.CreateNodeRequest{
 		Path: path,
-		Type: pb.NodeType_DIRECTORY,
+		Type: pb.FileType_Directory,
 	}
 
 	resp, err := c.metaClient.CreateNode(context.Background(), req)
@@ -74,8 +75,8 @@ func (c *MinifsClient) CreateDirectory(path string) error {
 	return nil
 }
 
-// A2: 获取文件状态
-func (c *MinifsClient) GetStatus(path string) (*pb.NodeInfo, error) {
+// A2: 获取文件状态 (适配 easyClient StatInfo 格式)
+func (c *MinifsClient) GetStatus(path string) (*pb.StatInfo, error) {
 	req := &pb.GetNodeInfoRequest{
 		Path: path,
 	}
@@ -86,22 +87,22 @@ func (c *MinifsClient) GetStatus(path string) (*pb.NodeInfo, error) {
 	}
 
 	fmt.Printf("Status for %s:\n", path)
-	fmt.Printf("  Inode: %d\n", resp.NodeInfo.Inode)
-	fmt.Printf("  Type: %s\n", resp.NodeInfo.Type.String())
-	fmt.Printf("  Size: %d bytes\n", resp.NodeInfo.Size)
-	fmt.Printf("  Replication: %d\n", resp.NodeInfo.Replication)
-	if resp.NodeInfo.ModTime != nil {
-		fmt.Printf("  ModTime: %v\n", resp.NodeInfo.ModTime)
-	}
-	if resp.NodeInfo.Md5 != "" {
-		fmt.Printf("  MD5: %s\n", resp.NodeInfo.Md5)
+	fmt.Printf("  Path: %s\n", resp.StatInfo.Path)
+	fmt.Printf("  Type: %s\n", resp.StatInfo.Type.String())
+	fmt.Printf("  Size: %d bytes\n", resp.StatInfo.Size)
+	fmt.Printf("  MTime: %d\n", resp.StatInfo.Mtime)
+	if len(resp.StatInfo.ReplicaData) > 0 {
+		fmt.Printf("  Replicas: %d\n", len(resp.StatInfo.ReplicaData))
+		for i, replica := range resp.StatInfo.ReplicaData {
+			fmt.Printf("    Replica %d: %s @ %s\n", i+1, replica.Id, replica.DsNode)
+		}
 	}
 
-	return resp.NodeInfo, nil
+	return resp.StatInfo, nil
 }
 
-// A2: 列出目录内容
-func (c *MinifsClient) ListStatus(path string) ([]*pb.NodeInfo, error) {
+// A2: 列出目录内容 (适配 easyClient StatInfo 格式)
+func (c *MinifsClient) ListStatus(path string) ([]*pb.StatInfo, error) {
 	req := &pb.ListDirectoryRequest{
 		Path: path,
 	}
@@ -113,7 +114,18 @@ func (c *MinifsClient) ListStatus(path string) ([]*pb.NodeInfo, error) {
 
 	fmt.Printf("Contents of directory %s:\n", path)
 	for _, node := range resp.Nodes {
-		fmt.Printf("  %s\t%s\t%d\n", node.Type.String(), node.Path, node.Size)
+		// 提取文件名（路径的最后部分）
+		fileName := node.Path
+		if idx := strings.LastIndex(fileName, "/"); idx >= 0 {
+			fileName = fileName[idx+1:]
+		}
+		
+		typeStr := "FILE"
+		if node.Type == pb.FileType_Directory {
+			typeStr = "DIR "
+		}
+		
+		fmt.Printf("  %-4s %-20s %8d\n", typeStr, fileName, node.Size)
 	}
 
 	return resp.Nodes, nil
@@ -144,7 +156,7 @@ func (c *MinifsClient) WriteFile(path string, data []byte) error {
 	// 1. 获取块位置信息
 	req := &pb.GetBlockLocationsRequest{
 		Path: path,
-		Size: uint64(len(data)),
+		Size: int64(len(data)),
 	}
 
 	resp, err := c.metaClient.GetBlockLocations(context.Background(), req)
@@ -193,7 +205,7 @@ func (c *MinifsClient) WriteFile(path string, data []byte) error {
 	finalizeReq := &pb.FinalizeWriteRequest{
 		Path:  path,
 		Inode: resp.Inode,
-		Size:  uint64(len(data)),
+		Size:  int64(len(data)),
 		Md5:   md5Hash,
 	}
 
@@ -274,11 +286,9 @@ func (c *MinifsClient) ReadFile(path string) ([]byte, error) {
 	statusReq := &pb.GetNodeInfoRequest{
 		Path: path,
 	}
-	statusResp, err := c.metaClient.GetNodeInfo(context.Background(), statusReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get file info for %s: %v", path, err)
-	}
-	originalMD5 := statusResp.NodeInfo.Md5
+	// TODO: 由于 StatInfo 不包含 MD5 字段，这里暂时跳过 MD5 验证
+	_ = statusReq // 避免未使用变量警告
+	originalMD5 := "" // 临时跳过 MD5 验证
 
 	// 2. 获取文件块位置
 	req := &pb.GetBlockLocationsRequest{
@@ -371,10 +381,24 @@ func (c *MinifsClient) GetClusterInfo() (*pb.GetClusterInfoResponse, error) {
 	}
 
 	fmt.Printf("Cluster Information:\n")
-	fmt.Printf("DataServers (%d):\n", len(resp.Dataservers))
-	for _, ds := range resp.Dataservers {
-		fmt.Printf("  ID: %s, Address: %s, Blocks: %d, Free Space: %d MB\n",
-			ds.Id, ds.Addr, ds.BlockCount, ds.FreeSpace/(1024*1024))
+	
+	// 显示 MetaServer 信息
+	if resp.ClusterInfo.MasterMetaServer != nil {
+		fmt.Printf("Master MetaServer: %s:%d\n", 
+			resp.ClusterInfo.MasterMetaServer.Host, resp.ClusterInfo.MasterMetaServer.Port)
+	}
+	if len(resp.ClusterInfo.SlaveMetaServer) > 0 {
+		fmt.Printf("Slave MetaServers (%d):\n", len(resp.ClusterInfo.SlaveMetaServer))
+		for _, slave := range resp.ClusterInfo.SlaveMetaServer {
+			fmt.Printf("  %s:%d\n", slave.Host, slave.Port)
+		}
+	}
+	
+	// 显示 DataServer 信息
+	fmt.Printf("DataServers (%d):\n", len(resp.ClusterInfo.DataServer))
+	for _, ds := range resp.ClusterInfo.DataServer {
+		fmt.Printf("  %s:%d - Files: %d, Capacity: %d MB, Used: %d MB\n",
+			ds.Host, ds.Port, ds.FileTotal, ds.Capacity, ds.UseCapacity)
 	}
 
 	return resp, nil

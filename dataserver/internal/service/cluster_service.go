@@ -328,17 +328,7 @@ func (s *EtcdClusterService) processReplicateCommand(blockID uint64, targets []s
 	return nil
 }
 
-// 简化的MetaServer客户端实现
-type metaServerClient struct {
-	conn *grpc.ClientConn
-}
-
+// 使用生成的MetaServer客户端
 func NewMetaServerServiceClient(conn *grpc.ClientConn) pb.MetaServerServiceClient {
-	return &metaServerClient{conn: conn}
-}
-
-func (c *metaServerClient) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest, opts ...grpc.CallOption) (*pb.HeartbeatResponse, error) {
-	resp := &pb.HeartbeatResponse{}
-	err := c.conn.Invoke(ctx, "/dfs_project.MetaServerService/Heartbeat", req, resp, opts...)
-	return resp, err
+	return pb.NewMetaServerServiceClient(conn)
 }

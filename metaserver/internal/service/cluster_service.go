@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -318,26 +320,59 @@ func (cs *ClusterService) GetClusterStats() (totalServers, healthyServers int, t
 }
 
 // GetClusterInfo 获取集群详细信息（用于gRPC接口）
-func (cs *ClusterService) GetClusterInfo() []*pb.DataServerInfo {
+func (cs *ClusterService) GetClusterInfo() *pb.ClusterInfo {
 	cs.mutex.RLock()
 	defer cs.mutex.RUnlock()
 	
-	var servers []*pb.DataServerInfo
+	var dataServers []*pb.DataServerMsg
 	
 	for _, ds := range cs.dataServers {
 		blockCount, freeSpace, _, _ := ds.GetStatus()
 		
-		serverInfo := &pb.DataServerInfo{
-			Id:         ds.ID,
-			Addr:       ds.Addr,
-			BlockCount: blockCount,
-			FreeSpace:  freeSpace,
+		// 解析地址
+		host, port := cs.parseAddr(ds.Addr)
+		
+		// 计算容量 (假设单位为MB)
+		totalCapacity := int32(100000) // 默认100GB
+		useCapacity := totalCapacity - int32(freeSpace/1024/1024) // 转换为MB
+		
+		dataServerMsg := &pb.DataServerMsg{
+			Host:        host,
+			Port:        port,
+			FileTotal:   int32(blockCount),
+			Capacity:    totalCapacity,
+			UseCapacity: useCapacity,
 		}
 		
-		servers = append(servers, serverInfo)
+		dataServers = append(dataServers, dataServerMsg)
 	}
 	
-	return servers
+	// 构建集群信息
+	clusterInfo := &pb.ClusterInfo{
+		MasterMetaServer: &pb.MetaServerMsg{
+			Host: "localhost", // TODO: 从配置获取
+			Port: 8080,
+		},
+		SlaveMetaServer: []*pb.MetaServerMsg{}, // TODO: 实现从节点支持
+		DataServer:      dataServers,
+	}
+	
+	return clusterInfo
+}
+
+// parseAddr 解析地址字符串 "host:port" 为单独的 host 和 port
+func (cs *ClusterService) parseAddr(addr string) (string, int32) {
+	parts := strings.Split(addr, ":")
+	if len(parts) != 2 {
+		return "localhost", 8090
+	}
+	
+	port, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return parts[0], 8090
+	}
+	
+	return parts[0], int32(port)
 }
 
 // onDataServerChange 处理 etcd 中 DataServer 的变化事件

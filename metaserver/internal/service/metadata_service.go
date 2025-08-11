@@ -12,7 +12,6 @@ import (
 
 	"github.com/dgraph-io/badger/v3"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type MetadataService struct {
@@ -56,7 +55,17 @@ func (ms *MetadataService) generateInodeID() (uint64, error) {
 }
 
 // CreateNode 创建文件或目录节点
-func (ms *MetadataService) CreateNode(path string, nodeType pb.NodeType) error {
+func (ms *MetadataService) CreateNode(path string, nodeType pb.FileType) error {
+	// 转换 FileType 为内部使用的 NodeType
+	var internalType pb.FileType
+	switch nodeType {
+	case pb.FileType_Directory:
+		internalType = pb.FileType_Directory
+	case pb.FileType_File:
+		internalType = pb.FileType_File
+	default:
+		internalType = pb.FileType_File
+	}
 	// 标准化路径
 	path = filepath.Clean(path)
 	if path == "." {
@@ -97,9 +106,9 @@ func (ms *MetadataService) CreateNode(path string, nodeType pb.NodeType) error {
 		nodeInfo := &pb.NodeInfo{
 			Inode:       inodeID,
 			Path:        path,
-			Type:        nodeType,
+			Type:        internalType,
 			Size:        0,
-			ModTime:     timestamppb.Now(),
+			Mtime:       time.Now().UnixMilli(),
 			Replication: uint32(ms.config.Cluster.DefaultReplication),
 		}
 		
@@ -313,7 +322,7 @@ func (ms *MetadataService) DeleteNode(path string, recursive bool) ([]model.Bloc
 		}
 		
 		// 如果是目录，检查是否为空或需要递归删除
-		if nodeInfo.Type == pb.NodeType_DIRECTORY {
+		if nodeInfo.Type == pb.FileType_Directory {
 			children, err := ms.listDirectoryInTx(txn, inodeID)
 			if err != nil {
 				return err
@@ -369,7 +378,7 @@ func (ms *MetadataService) deleteNodeRecursiveInTx(txn *badger.Txn, inodeID uint
 	}
 	
 	// 如果是目录，递归删除子节点
-	if nodeInfo.Type == pb.NodeType_DIRECTORY {
+	if nodeInfo.Type == pb.FileType_Directory {
 		children, err := ms.listDirectoryInTx(txn, inodeID)
 		if err != nil {
 			return nil, err
@@ -416,7 +425,7 @@ func (ms *MetadataService) deleteNodeRecursiveWithLocationsInTx(txn *badger.Txn,
 	}
 	
 	// 如果是目录，递归删除子节点
-	if nodeInfo.Type == pb.NodeType_DIRECTORY {
+	if nodeInfo.Type == pb.FileType_Directory {
 		children, err := ms.listDirectoryInTx(txn, inodeID)
 		if err != nil {
 			return nil, err
@@ -666,8 +675,8 @@ func (ms *MetadataService) FinalizeWrite(path string, inodeID uint64, size uint6
 		}
 		
 		// 更新文件信息
-		nodeInfo.Size = size
-		nodeInfo.ModTime = timestamppb.Now()
+		nodeInfo.Size = int64(size)
+		nodeInfo.Mtime = time.Now().UnixMilli()
 		nodeInfo.Md5 = md5Hash
 		
 		// 重新序列化并保存

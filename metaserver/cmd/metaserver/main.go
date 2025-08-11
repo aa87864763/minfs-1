@@ -139,7 +139,7 @@ func initRootDirectory(db *badger.DB, config *model.Config) error {
 	}
 
 	// 创建根目录
-	err = metadataService.CreateNode("/", pb.NodeType_DIRECTORY)
+	err = metadataService.CreateNode("/", pb.FileType_Directory)
 	if err != nil {
 		return fmt.Errorf("failed to create root directory: %v", err)
 	}

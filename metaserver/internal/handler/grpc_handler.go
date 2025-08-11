@@ -67,8 +67,11 @@ func (h *MetaServerHandler) GetNodeInfo(ctx context.Context, req *pb.GetNodeInfo
 		return nil, err
 	}
 	
+	// 转换为 StatInfo 格式
+	statInfo := h.nodeInfoToStatInfo(nodeInfo)
+	
 	return &pb.GetNodeInfoResponse{
-		NodeInfo: nodeInfo,
+		StatInfo: statInfo,
 	}, nil
 }
 
@@ -86,9 +89,15 @@ func (h *MetaServerHandler) ListDirectory(ctx context.Context, req *pb.ListDirec
 		return nil, err
 	}
 	
-	log.Printf("ListDirectory success: %s (%d items)", req.Path, len(nodes))
+	// 转换为 StatInfo 列表
+	var statInfos []*pb.StatInfo
+	for _, nodeInfo := range nodes {
+		statInfos = append(statInfos, h.nodeInfoToStatInfo(nodeInfo))
+	}
+	
+	log.Printf("ListDirectory success: %s (%d items)", req.Path, len(statInfos))
 	return &pb.ListDirectoryResponse{
-		Nodes: nodes,
+		Nodes: statInfos,
 	}, nil
 }
 
@@ -137,7 +146,7 @@ func (h *MetaServerHandler) GetBlockLocations(ctx context.Context, req *pb.GetBl
 	if err != nil {
 		// 文件不存在，创建新文件（写入模式）
 		if req.Size > 0 {
-			err = h.metadataService.CreateNode(path, pb.NodeType_FILE)
+			err = h.metadataService.CreateNode(path, pb.FileType_File)
 			if err != nil {
 				return nil, err
 			}
@@ -151,7 +160,7 @@ func (h *MetaServerHandler) GetBlockLocations(ctx context.Context, req *pb.GetBl
 		}
 	}
 	
-	if nodeInfo.Type == pb.NodeType_DIRECTORY {
+	if nodeInfo.Type == pb.FileType_Directory {
 		return nil, fmt.Errorf("cannot get block locations for directory: %s", path)
 	}
 	
@@ -173,7 +182,7 @@ func (h *MetaServerHandler) GetBlockLocations(ctx context.Context, req *pb.GetBl
 	} else {
 		// 写入模式：分配新的数据块位置
 		log.Printf("Write mode: allocating new blocks for %s", path)
-		blockLocations, err := h.schedulerService.AllocateBlocks(req.Size, int(nodeInfo.Replication))
+		blockLocations, err := h.schedulerService.AllocateBlocks(uint64(req.Size), int(nodeInfo.Replication))
 		if err != nil {
 			return nil, err
 		}
@@ -207,7 +216,7 @@ func (h *MetaServerHandler) FinalizeWrite(ctx context.Context, req *pb.FinalizeW
 		return &pb.SimpleResponse{Success: false}, fmt.Errorf("invalid inode ID")
 	}
 	
-	err := h.metadataService.FinalizeWrite(req.Path, req.Inode, req.Size, req.Md5)
+	err := h.metadataService.FinalizeWrite(req.Path, req.Inode, uint64(req.Size), req.Md5)
 	if err != nil {
 		log.Printf("FinalizeWrite error: %v", err)
 		return &pb.SimpleResponse{Success: false}, err
@@ -221,12 +230,12 @@ func (h *MetaServerHandler) FinalizeWrite(ctx context.Context, req *pb.FinalizeW
 func (h *MetaServerHandler) GetClusterInfo(ctx context.Context, req *pb.GetClusterInfoRequest) (*pb.GetClusterInfoResponse, error) {
 	log.Printf("GetClusterInfo request")
 	
-	dataservers := h.clusterService.GetClusterInfo()
+	clusterInfo := h.clusterService.GetClusterInfo()
 	
-	log.Printf("GetClusterInfo success: %d dataservers", len(dataservers))
+	log.Printf("GetClusterInfo success: %d dataservers", len(clusterInfo.DataServer))
 	
 	return &pb.GetClusterInfoResponse{
-		Dataservers: dataservers,
+		ClusterInfo: clusterInfo,
 	}, nil
 }
 
@@ -249,7 +258,7 @@ func (h *MetaServerHandler) GetFileBlocks(ctx context.Context, req *pb.GetBlockL
 		return nil, fmt.Errorf("file not found: %v", err)
 	}
 	
-	if nodeInfo.Type != pb.NodeType_FILE {
+	if nodeInfo.Type != pb.FileType_File {
 		return nil, fmt.Errorf("path is not a file: %s", path)
 	}
 	
@@ -301,7 +310,7 @@ func (h *MetaServerHandler) GetReplicationInfo(ctx context.Context, req *pb.GetR
 			return nil, fmt.Errorf("文件不存在: %s", req.Path)
 		}
 		
-		if nodeInfo.Type != pb.NodeType_FILE {
+		if nodeInfo.Type != pb.FileType_File {
 			return nil, fmt.Errorf("路径不是文件: %s", req.Path)
 		}
 		
@@ -430,7 +439,7 @@ func (h *MetaServerHandler) getAllFileNodes() ([]*pb.NodeInfo, error) {
 	var files []*pb.NodeInfo
 	
 	err := h.metadataService.TraverseAllFiles(func(nodeInfo *pb.NodeInfo) error {
-		if nodeInfo.Type == pb.NodeType_FILE {
+		if nodeInfo.Type == pb.FileType_File {
 			files = append(files, nodeInfo)
 		}
 		return nil
@@ -446,4 +455,37 @@ func (h *MetaServerHandler) getAllFileNodes() ([]*pb.NodeInfo, error) {
 // SyncWAL 同步 WAL（用于主从复制，暂未实现）
 func (h *MetaServerHandler) SyncWAL(stream pb.MetaServerService_SyncWALServer) error {
 	return fmt.Errorf("SyncWAL not implemented yet")
+}
+
+// GetLeader 获取主从信息 (HA 支持)
+func (h *MetaServerHandler) GetLeader(ctx context.Context, req *pb.GetLeaderRequest) (*pb.GetLeaderResponse, error) {
+	// TODO: 实现真正的 HA 功能
+	return &pb.GetLeaderResponse{
+		Leader: &pb.MetaServerMsg{
+			Host: "localhost",
+			Port: 8080,
+		},
+		Followers: []*pb.MetaServerMsg{},
+	}, nil
+}
+
+// nodeInfoToStatInfo 将内部 NodeInfo 转换为 easyClient 需要的 StatInfo 格式
+func (h *MetaServerHandler) nodeInfoToStatInfo(nodeInfo *pb.NodeInfo) *pb.StatInfo {
+	// 获取副本数据
+	replicaData := h.getReplicaDataForFile(nodeInfo.Path)
+	
+	return &pb.StatInfo{
+		Path:        nodeInfo.Path,
+		Size:        nodeInfo.Size,
+		Mtime:       nodeInfo.Mtime,
+		Type:        nodeInfo.Type,  // 使用统一的 FileType
+		ReplicaData: replicaData,
+	}
+}
+
+// getReplicaDataForFile 获取文件的副本数据
+func (h *MetaServerHandler) getReplicaDataForFile(path string) []*pb.ReplicaData {
+	// TODO: 实现真正的副本数据获取
+	// 这里先返回空列表，后续可以根据实际需求完善
+	return []*pb.ReplicaData{}
 }
