@@ -5,9 +5,6 @@ package dfs_project;
 
 option go_package = "./pb";
 
-// 引入谷歌官方的时间戳类型，用于标准的时间表示
-import "google/protobuf/timestamp.proto";
-
 // MetaServerService 定义了元数据服务器需要暴露的所有 gRPC 接口
 service MetaServerService {
     // === 1. 提供给 Client 的核心文件系统接口 ===
@@ -41,35 +38,78 @@ service MetaServerService {
     // 接收来自 DataServer 的心跳和块报告
     rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
 
-    // === 3. (可选高级) 提供给 Slave MetaServer 的接口 ===
+    // === 3. HA 支持接口 ===
 
     // 用于主从节点之间，实时同步元数据操作日志 (WAL)
-    rpc SyncWAL(stream LogEntry) returns (SimpleResponse); 
+    rpc SyncWAL(stream LogEntry) returns (SimpleResponse);
+    
+    // 获取主从信息 (HA 支持)
+    rpc GetLeader(GetLeaderRequest) returns (GetLeaderResponse);
 }
 
 
-// --- 消息体定义 ---
+// ==================== 枚举定义 (完全匹配 easyClient) ====================
 
-// 通用的简单响应，用于表示操作成功与否
-message SimpleResponse {
-    bool success = 1;
+// 文件类型枚举 (匹配 easyClient FileType)
+enum FileType {
+    Unknown = 0;     // easyClient: Unknown(0)
+    Volume = 1;      // easyClient: Volume(1) 
+    File = 2;        // easyClient: File(2)
+    Directory = 3;   // easyClient: Directory(3)
 }
 
-// 节点类型枚举
-enum NodeType {
-    FILE = 0;
-    DIRECTORY = 1;
+// ==================== 核心数据结构 (匹配 easyClient) ====================
+
+// 副本数据结构 (匹配 easyClient ReplicaData)
+message ReplicaData {
+    string id = 1;       // 副本ID
+    string dsNode = 2;   // DataServer地址 "ip:port"
+    string path = 3;     // 文件在DataServer上的路径
 }
 
-// 文件或目录的核心元数据结构 (简化的 Inode)
+// 文件统计信息 (完全匹配 easyClient StatInfo)
+message StatInfo {
+    string path = 1;                     // 文件路径
+    int64 size = 2;                      // 文件大小
+    int64 mtime = 3;                     // 修改时间 Unix时间戳(毫秒)
+    FileType type = 4;                   // 文件类型
+    repeated ReplicaData replicaData = 5; // 副本数据列表
+}
+
+// MetaServer 信息 (匹配 easyClient MetaServerMsg)
+message MetaServerMsg {
+    string host = 1;    // 主机地址
+    int32 port = 2;     // 端口号
+}
+
+// DataServer 信息 (完全匹配 easyClient DataServerMsg)
+message DataServerMsg {
+    string host = 1;        // 主机地址
+    int32 port = 2;         // 端口号
+    int32 fileTotal = 3;    // 文件总数
+    int32 capacity = 4;     // 总容量 (MB)
+    int32 useCapacity = 5;  // 已使用容量 (MB)
+}
+
+// 集群信息 (完全匹配 easyClient ClusterInfo)
+message ClusterInfo {
+    MetaServerMsg masterMetaServer = 1;          // 主MetaServer
+    repeated MetaServerMsg slaveMetaServer = 2;  // 从MetaServer列表
+    repeated DataServerMsg dataServer = 3;       // DataServer列表
+}
+
+// ==================== 内部使用的数据结构 ====================
+
+// 内部节点信息 (服务端内部使用，保留必要字段)
 message NodeInfo {
-    uint64 inode = 1;      // 唯一的 inode 编号
+    uint64 inode = 1;      // 内部inode编号
     string path = 2;       // 完整路径
-    NodeType type = 3;     // 类型：文件或目录
-    uint64 size = 4;       // 文件大小 (目录为0)
-    google.protobuf.Timestamp mod_time = 5; // 最后修改时间
-    uint32 replication = 6; // 副本数 (比如 3)
+    FileType type = 3;     // 类型 (使用统一的FileType)
+    int64 size = 4;        // 文件大小
+    int64 mtime = 5;       // 修改时间 Unix时间戳(毫秒)
+    uint32 replication = 6; // 副本数
     string md5 = 7;        // 文件MD5哈希值
+    repeated ReplicaData replicaData = 8; // 副本数据
 }
 
 // 一个数据块的所有副本位置
@@ -78,41 +118,49 @@ message BlockLocations {
     repeated string locations = 2; // DataServer 地址列表 (IP:Port)
 }
 
+// ==================== 请求和响应消息 ====================
+
+// 通用的简单响应，用于表示操作成功与否
+message SimpleResponse {
+    bool success = 1;
+    string message = 2;
+}
+
 // CreateNode
 message CreateNodeRequest {
     string path = 1;
-    NodeType type = 2;
+    FileType type = 2;  // 使用统一的FileType
 }
 
-// GetNodeInfo
+// GetNodeInfo - 返回 StatInfo 供 easyClient 使用
 message GetNodeInfoRequest {
     string path = 1;
 }
 message GetNodeInfoResponse {
-    NodeInfo node_info = 1;
+    StatInfo statInfo = 1;  // 直接返回easyClient需要的格式
 }
 
-// ListDirectory
+// ListDirectory - 返回 StatInfo 列表供 easyClient 使用
 message ListDirectoryRequest {
     string path = 1;
 }
 message ListDirectoryResponse {
-    repeated NodeInfo nodes = 1; // 返回该目录下所有子节点的列表
+    repeated StatInfo nodes = 1; // 直接返回easyClient需要的格式
 }
 
 // DeleteNode
 message DeleteNodeRequest {
     string path = 1;
-    bool recursive = 2; // 是否递归删除
+    bool recursive = 2;
 }
 
 // GetBlockLocations
 message GetBlockLocationsRequest {
     string path = 1;
-    uint64 size = 2; // 对于写操作，Client 告诉 metaServer 文件总大小，以便规划块
+    int64 size = 2; // 对于写操作，Client 告诉 metaServer 文件总大小
 }
 message GetBlockLocationsResponse {
-    uint64 inode = 1; // 返回分配的 inode
+    uint64 inode = 1;
     repeated BlockLocations block_locations = 2;
 }
 
@@ -120,66 +168,59 @@ message GetBlockLocationsResponse {
 message FinalizeWriteRequest {
     string path = 1;
     uint64 inode = 2;
-    uint64 size = 3;
-    string md5 = 4;  // 文件MD5哈希值
+    int64 size = 3;
+    string md5 = 4;
 }
 
-// GetClusterInfo
-message DataServerInfo {
-    string id = 1;
-    string addr = 2;
-    uint64 block_count = 3;
-    uint64 free_space = 4;
-}
+// GetClusterInfo - 直接返回 easyClient 需要的 ClusterInfo
 message GetClusterInfoRequest {}
 message GetClusterInfoResponse {
-    repeated DataServerInfo dataservers = 1;
+    ClusterInfo clusterInfo = 1;  // 直接返回easyClient需要的格式
 }
 
-// Heartbeat
+// Heartbeat (内部接口，保持不变以兼容DataServer)
 message HeartbeatRequest {
     string dataserver_id = 1;
     string dataserver_addr = 2;
     uint64 block_count = 3;
     uint64 free_space = 4;
-    repeated uint64 block_ids_report = 5; // 完整的块报告
+    repeated uint64 block_ids_report = 5;
 }
-// 心跳响应可以携带来自 metaServer 的指令
+
 message Command {
     enum Action {
-        DELETE_BLOCK = 0;     // 删除块 (用于垃圾回收)
-        COPY_BLOCK = 1;       // 复制块 (用于副本修复)
+        DELETE_BLOCK = 0;
+        COPY_BLOCK = 1;
     }
     Action action = 1;
     uint64 block_id = 2;
-    // 对于 COPY_BLOCK，这里是源地址
-    // 对于其他指令，可以为空
     repeated string targets = 3; 
 }
+
 message HeartbeatResponse {
     repeated Command commands = 1;
 }
 
 // GetReplicationInfo
 message GetReplicationInfoRequest {
-    string path = 1;  // 文件路径，为空表示查询所有文件
-}
-
-message ReplicationStatus {
-    string path = 1;                    // 文件路径
-    uint64 inode = 2;                  // 文件inode
-    uint64 size = 3;                   // 文件大小
-    uint32 expected_replicas = 4;      // 期望副本数
-    uint32 actual_replicas = 5;        // 实际副本数
-    repeated BlockReplicationInfo blocks = 6; // 各块的副本信息
-    string status = 7;                 // 状态: "healthy", "under_replicated", "over_replicated"
+    string path = 1;
 }
 
 message BlockReplicationInfo {
-    uint64 block_id = 1;              // 块ID
-    repeated string locations = 2;     // 实际存储位置
-    repeated string expected_locations = 3; // 期望存储位置
-    uint32 replica_count = 4;         // 实际副本数
+    uint64 block_id = 1;
+    repeated string locations = 2;
+    repeated string expected_locations = 3;
+    uint32 replica_count = 4;
+}
+
+message ReplicationStatus {
+    string path = 1;
+    uint64 inode = 2;
+    int64 size = 3;  // 改为 int64
+    uint32 expected_replicas = 4;
+    uint32 actual_replicas = 5;
+    repeated BlockReplicationInfo blocks = 6;
+    string status = 7;
 }
 
 message GetReplicationInfoResponse {
@@ -190,7 +231,15 @@ message GetReplicationInfoResponse {
     uint32 over_replicated_files = 5;
 }
 
+// ==================== HA 支持 ====================
+
+message GetLeaderRequest {}
+message GetLeaderResponse {
+    MetaServerMsg leader = 1;
+    repeated MetaServerMsg followers = 2;
+}
+
 // SyncWAL (用于主从同步)
 message LogEntry {
-    bytes data = 1; // 序列化后的操作指令
+    bytes data = 1;
 }
