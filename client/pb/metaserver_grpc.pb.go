@@ -31,6 +31,7 @@ const (
 	MetaServerService_GetReplicationInfo_FullMethodName = "/dfs_project.MetaServerService/GetReplicationInfo"
 	MetaServerService_Heartbeat_FullMethodName          = "/dfs_project.MetaServerService/Heartbeat"
 	MetaServerService_SyncWAL_FullMethodName            = "/dfs_project.MetaServerService/SyncWAL"
+	MetaServerService_GetLeader_FullMethodName          = "/dfs_project.MetaServerService/GetLeader"
 )
 
 // MetaServerServiceClient is the client API for MetaServerService service.
@@ -59,6 +60,8 @@ type MetaServerServiceClient interface {
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 	// 用于主从节点之间，实时同步元数据操作日志 (WAL)
 	SyncWAL(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[LogEntry, SimpleResponse], error)
+	// 获取主从信息 (HA 支持)
+	GetLeader(ctx context.Context, in *GetLeaderRequest, opts ...grpc.CallOption) (*GetLeaderResponse, error)
 }
 
 type metaServerServiceClient struct {
@@ -172,6 +175,16 @@ func (c *metaServerServiceClient) SyncWAL(ctx context.Context, opts ...grpc.Call
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type MetaServerService_SyncWALClient = grpc.ClientStreamingClient[LogEntry, SimpleResponse]
 
+func (c *metaServerServiceClient) GetLeader(ctx context.Context, in *GetLeaderRequest, opts ...grpc.CallOption) (*GetLeaderResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetLeaderResponse)
+	err := c.cc.Invoke(ctx, MetaServerService_GetLeader_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MetaServerServiceServer is the server API for MetaServerService service.
 // All implementations must embed UnimplementedMetaServerServiceServer
 // for forward compatibility.
@@ -198,6 +211,8 @@ type MetaServerServiceServer interface {
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	// 用于主从节点之间，实时同步元数据操作日志 (WAL)
 	SyncWAL(grpc.ClientStreamingServer[LogEntry, SimpleResponse]) error
+	// 获取主从信息 (HA 支持)
+	GetLeader(context.Context, *GetLeaderRequest) (*GetLeaderResponse, error)
 	mustEmbedUnimplementedMetaServerServiceServer()
 }
 
@@ -237,6 +252,9 @@ func (UnimplementedMetaServerServiceServer) Heartbeat(context.Context, *Heartbea
 }
 func (UnimplementedMetaServerServiceServer) SyncWAL(grpc.ClientStreamingServer[LogEntry, SimpleResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method SyncWAL not implemented")
+}
+func (UnimplementedMetaServerServiceServer) GetLeader(context.Context, *GetLeaderRequest) (*GetLeaderResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetLeader not implemented")
 }
 func (UnimplementedMetaServerServiceServer) mustEmbedUnimplementedMetaServerServiceServer() {}
 func (UnimplementedMetaServerServiceServer) testEmbeddedByValue()                           {}
@@ -428,6 +446,24 @@ func _MetaServerService_SyncWAL_Handler(srv interface{}, stream grpc.ServerStrea
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type MetaServerService_SyncWALServer = grpc.ClientStreamingServer[LogEntry, SimpleResponse]
 
+func _MetaServerService_GetLeader_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetLeaderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MetaServerServiceServer).GetLeader(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MetaServerService_GetLeader_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MetaServerServiceServer).GetLeader(ctx, req.(*GetLeaderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // MetaServerService_ServiceDesc is the grpc.ServiceDesc for MetaServerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -470,6 +506,10 @@ var MetaServerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Heartbeat",
 			Handler:    _MetaServerService_Heartbeat_Handler,
+		},
+		{
+			MethodName: "GetLeader",
+			Handler:    _MetaServerService_GetLeader_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

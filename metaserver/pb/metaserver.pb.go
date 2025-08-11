@@ -9,7 +9,6 @@
 package pb
 
 import (
-	timestamp "github.com/golang/protobuf/ptypes/timestamp"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -24,58 +23,64 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// 节点类型枚举
-type NodeType int32
+// 文件类型枚举 (匹配 easyClient FileType)
+type FileType int32
 
 const (
-	NodeType_FILE      NodeType = 0
-	NodeType_DIRECTORY NodeType = 1
+	FileType_Unknown   FileType = 0 // easyClient: Unknown(0)
+	FileType_Volume    FileType = 1 // easyClient: Volume(1)
+	FileType_File      FileType = 2 // easyClient: File(2)
+	FileType_Directory FileType = 3 // easyClient: Directory(3)
 )
 
-// Enum value maps for NodeType.
+// Enum value maps for FileType.
 var (
-	NodeType_name = map[int32]string{
-		0: "FILE",
-		1: "DIRECTORY",
+	FileType_name = map[int32]string{
+		0: "Unknown",
+		1: "Volume",
+		2: "File",
+		3: "Directory",
 	}
-	NodeType_value = map[string]int32{
-		"FILE":      0,
-		"DIRECTORY": 1,
+	FileType_value = map[string]int32{
+		"Unknown":   0,
+		"Volume":    1,
+		"File":      2,
+		"Directory": 3,
 	}
 )
 
-func (x NodeType) Enum() *NodeType {
-	p := new(NodeType)
+func (x FileType) Enum() *FileType {
+	p := new(FileType)
 	*p = x
 	return p
 }
 
-func (x NodeType) String() string {
+func (x FileType) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (NodeType) Descriptor() protoreflect.EnumDescriptor {
+func (FileType) Descriptor() protoreflect.EnumDescriptor {
 	return file_metaserver_proto_enumTypes[0].Descriptor()
 }
 
-func (NodeType) Type() protoreflect.EnumType {
+func (FileType) Type() protoreflect.EnumType {
 	return &file_metaserver_proto_enumTypes[0]
 }
 
-func (x NodeType) Number() protoreflect.EnumNumber {
+func (x FileType) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use NodeType.Descriptor instead.
-func (NodeType) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use FileType.Descriptor instead.
+func (FileType) EnumDescriptor() ([]byte, []int) {
 	return file_metaserver_proto_rawDescGZIP(), []int{0}
 }
 
 type Command_Action int32
 
 const (
-	Command_DELETE_BLOCK Command_Action = 0 // 删除块 (用于垃圾回收)
-	Command_COPY_BLOCK   Command_Action = 1 // 复制块 (用于副本修复)
+	Command_DELETE_BLOCK Command_Action = 0
+	Command_COPY_BLOCK   Command_Action = 1
 )
 
 // Enum value maps for Command_Action.
@@ -114,31 +119,33 @@ func (x Command_Action) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Command_Action.Descriptor instead.
 func (Command_Action) EnumDescriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{16, 0}
+	return file_metaserver_proto_rawDescGZIP(), []int{20, 0}
 }
 
-// 通用的简单响应，用于表示操作成功与否
-type SimpleResponse struct {
+// 副本数据结构 (匹配 easyClient ReplicaData)
+type ReplicaData struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`         // 副本ID
+	DsNode        string                 `protobuf:"bytes,2,opt,name=dsNode,proto3" json:"dsNode,omitempty"` // DataServer地址 "ip:port"
+	Path          string                 `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`     // 文件在DataServer上的路径
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *SimpleResponse) Reset() {
-	*x = SimpleResponse{}
+func (x *ReplicaData) Reset() {
+	*x = ReplicaData{}
 	mi := &file_metaserver_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *SimpleResponse) String() string {
+func (x *ReplicaData) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SimpleResponse) ProtoMessage() {}
+func (*ReplicaData) ProtoMessage() {}
 
-func (x *SimpleResponse) ProtoReflect() protoreflect.Message {
+func (x *ReplicaData) ProtoReflect() protoreflect.Message {
 	mi := &file_metaserver_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -150,35 +157,318 @@ func (x *SimpleResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SimpleResponse.ProtoReflect.Descriptor instead.
-func (*SimpleResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use ReplicaData.ProtoReflect.Descriptor instead.
+func (*ReplicaData) Descriptor() ([]byte, []int) {
 	return file_metaserver_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *SimpleResponse) GetSuccess() bool {
+func (x *ReplicaData) GetId() string {
 	if x != nil {
-		return x.Success
+		return x.Id
 	}
-	return false
+	return ""
 }
 
-// 文件或目录的核心元数据结构 (简化的 Inode)
+func (x *ReplicaData) GetDsNode() string {
+	if x != nil {
+		return x.DsNode
+	}
+	return ""
+}
+
+func (x *ReplicaData) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+// 文件统计信息 (完全匹配 easyClient StatInfo)
+type StatInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`                            // 文件路径
+	Size          int64                  `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`                           // 文件大小
+	Mtime         int64                  `protobuf:"varint,3,opt,name=mtime,proto3" json:"mtime,omitempty"`                         // 修改时间 Unix时间戳(毫秒)
+	Type          FileType               `protobuf:"varint,4,opt,name=type,proto3,enum=dfs_project.FileType" json:"type,omitempty"` // 文件类型
+	ReplicaData   []*ReplicaData         `protobuf:"bytes,5,rep,name=replicaData,proto3" json:"replicaData,omitempty"`              // 副本数据列表
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StatInfo) Reset() {
+	*x = StatInfo{}
+	mi := &file_metaserver_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StatInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StatInfo) ProtoMessage() {}
+
+func (x *StatInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_metaserver_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StatInfo.ProtoReflect.Descriptor instead.
+func (*StatInfo) Descriptor() ([]byte, []int) {
+	return file_metaserver_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *StatInfo) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *StatInfo) GetSize() int64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+func (x *StatInfo) GetMtime() int64 {
+	if x != nil {
+		return x.Mtime
+	}
+	return 0
+}
+
+func (x *StatInfo) GetType() FileType {
+	if x != nil {
+		return x.Type
+	}
+	return FileType_Unknown
+}
+
+func (x *StatInfo) GetReplicaData() []*ReplicaData {
+	if x != nil {
+		return x.ReplicaData
+	}
+	return nil
+}
+
+// MetaServer 信息 (匹配 easyClient MetaServerMsg)
+type MetaServerMsg struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Host          string                 `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`  // 主机地址
+	Port          int32                  `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"` // 端口号
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetaServerMsg) Reset() {
+	*x = MetaServerMsg{}
+	mi := &file_metaserver_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetaServerMsg) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetaServerMsg) ProtoMessage() {}
+
+func (x *MetaServerMsg) ProtoReflect() protoreflect.Message {
+	mi := &file_metaserver_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetaServerMsg.ProtoReflect.Descriptor instead.
+func (*MetaServerMsg) Descriptor() ([]byte, []int) {
+	return file_metaserver_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *MetaServerMsg) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *MetaServerMsg) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+// DataServer 信息 (完全匹配 easyClient DataServerMsg)
+type DataServerMsg struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Host          string                 `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`                // 主机地址
+	Port          int32                  `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`               // 端口号
+	FileTotal     int32                  `protobuf:"varint,3,opt,name=fileTotal,proto3" json:"fileTotal,omitempty"`     // 文件总数
+	Capacity      int32                  `protobuf:"varint,4,opt,name=capacity,proto3" json:"capacity,omitempty"`       // 总容量 (MB)
+	UseCapacity   int32                  `protobuf:"varint,5,opt,name=useCapacity,proto3" json:"useCapacity,omitempty"` // 已使用容量 (MB)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DataServerMsg) Reset() {
+	*x = DataServerMsg{}
+	mi := &file_metaserver_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DataServerMsg) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DataServerMsg) ProtoMessage() {}
+
+func (x *DataServerMsg) ProtoReflect() protoreflect.Message {
+	mi := &file_metaserver_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DataServerMsg.ProtoReflect.Descriptor instead.
+func (*DataServerMsg) Descriptor() ([]byte, []int) {
+	return file_metaserver_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *DataServerMsg) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *DataServerMsg) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *DataServerMsg) GetFileTotal() int32 {
+	if x != nil {
+		return x.FileTotal
+	}
+	return 0
+}
+
+func (x *DataServerMsg) GetCapacity() int32 {
+	if x != nil {
+		return x.Capacity
+	}
+	return 0
+}
+
+func (x *DataServerMsg) GetUseCapacity() int32 {
+	if x != nil {
+		return x.UseCapacity
+	}
+	return 0
+}
+
+// 集群信息 (完全匹配 easyClient ClusterInfo)
+type ClusterInfo struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	MasterMetaServer *MetaServerMsg         `protobuf:"bytes,1,opt,name=masterMetaServer,proto3" json:"masterMetaServer,omitempty"` // 主MetaServer
+	SlaveMetaServer  []*MetaServerMsg       `protobuf:"bytes,2,rep,name=slaveMetaServer,proto3" json:"slaveMetaServer,omitempty"`   // 从MetaServer列表
+	DataServer       []*DataServerMsg       `protobuf:"bytes,3,rep,name=dataServer,proto3" json:"dataServer,omitempty"`             // DataServer列表
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ClusterInfo) Reset() {
+	*x = ClusterInfo{}
+	mi := &file_metaserver_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClusterInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClusterInfo) ProtoMessage() {}
+
+func (x *ClusterInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_metaserver_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClusterInfo.ProtoReflect.Descriptor instead.
+func (*ClusterInfo) Descriptor() ([]byte, []int) {
+	return file_metaserver_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ClusterInfo) GetMasterMetaServer() *MetaServerMsg {
+	if x != nil {
+		return x.MasterMetaServer
+	}
+	return nil
+}
+
+func (x *ClusterInfo) GetSlaveMetaServer() []*MetaServerMsg {
+	if x != nil {
+		return x.SlaveMetaServer
+	}
+	return nil
+}
+
+func (x *ClusterInfo) GetDataServer() []*DataServerMsg {
+	if x != nil {
+		return x.DataServer
+	}
+	return nil
+}
+
+// 内部节点信息 (服务端内部使用，保留必要字段)
 type NodeInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Inode         uint64                 `protobuf:"varint,1,opt,name=inode,proto3" json:"inode,omitempty"`                         // 唯一的 inode 编号
+	Inode         uint64                 `protobuf:"varint,1,opt,name=inode,proto3" json:"inode,omitempty"`                         // 内部inode编号
 	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`                            // 完整路径
-	Type          NodeType               `protobuf:"varint,3,opt,name=type,proto3,enum=dfs_project.NodeType" json:"type,omitempty"` // 类型：文件或目录
-	Size          uint64                 `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`                           // 文件大小 (目录为0)
-	ModTime       *timestamp.Timestamp   `protobuf:"bytes,5,opt,name=mod_time,json=modTime,proto3" json:"mod_time,omitempty"`       // 最后修改时间
-	Replication   uint32                 `protobuf:"varint,6,opt,name=replication,proto3" json:"replication,omitempty"`             // 副本数 (比如 3)
+	Type          FileType               `protobuf:"varint,3,opt,name=type,proto3,enum=dfs_project.FileType" json:"type,omitempty"` // 类型 (使用统一的FileType)
+	Size          int64                  `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`                           // 文件大小
+	Mtime         int64                  `protobuf:"varint,5,opt,name=mtime,proto3" json:"mtime,omitempty"`                         // 修改时间 Unix时间戳(毫秒)
+	Replication   uint32                 `protobuf:"varint,6,opt,name=replication,proto3" json:"replication,omitempty"`             // 副本数
 	Md5           string                 `protobuf:"bytes,7,opt,name=md5,proto3" json:"md5,omitempty"`                              // 文件MD5哈希值
+	ReplicaData   []*ReplicaData         `protobuf:"bytes,8,rep,name=replicaData,proto3" json:"replicaData,omitempty"`              // 副本数据
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *NodeInfo) Reset() {
 	*x = NodeInfo{}
-	mi := &file_metaserver_proto_msgTypes[1]
+	mi := &file_metaserver_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -190,7 +480,7 @@ func (x *NodeInfo) String() string {
 func (*NodeInfo) ProtoMessage() {}
 
 func (x *NodeInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[1]
+	mi := &file_metaserver_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -203,7 +493,7 @@ func (x *NodeInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeInfo.ProtoReflect.Descriptor instead.
 func (*NodeInfo) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{1}
+	return file_metaserver_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *NodeInfo) GetInode() uint64 {
@@ -220,25 +510,25 @@ func (x *NodeInfo) GetPath() string {
 	return ""
 }
 
-func (x *NodeInfo) GetType() NodeType {
+func (x *NodeInfo) GetType() FileType {
 	if x != nil {
 		return x.Type
 	}
-	return NodeType_FILE
+	return FileType_Unknown
 }
 
-func (x *NodeInfo) GetSize() uint64 {
+func (x *NodeInfo) GetSize() int64 {
 	if x != nil {
 		return x.Size
 	}
 	return 0
 }
 
-func (x *NodeInfo) GetModTime() *timestamp.Timestamp {
+func (x *NodeInfo) GetMtime() int64 {
 	if x != nil {
-		return x.ModTime
+		return x.Mtime
 	}
-	return nil
+	return 0
 }
 
 func (x *NodeInfo) GetReplication() uint32 {
@@ -255,6 +545,13 @@ func (x *NodeInfo) GetMd5() string {
 	return ""
 }
 
+func (x *NodeInfo) GetReplicaData() []*ReplicaData {
+	if x != nil {
+		return x.ReplicaData
+	}
+	return nil
+}
+
 // 一个数据块的所有副本位置
 type BlockLocations struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -266,7 +563,7 @@ type BlockLocations struct {
 
 func (x *BlockLocations) Reset() {
 	*x = BlockLocations{}
-	mi := &file_metaserver_proto_msgTypes[2]
+	mi := &file_metaserver_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -278,7 +575,7 @@ func (x *BlockLocations) String() string {
 func (*BlockLocations) ProtoMessage() {}
 
 func (x *BlockLocations) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[2]
+	mi := &file_metaserver_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -291,7 +588,7 @@ func (x *BlockLocations) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BlockLocations.ProtoReflect.Descriptor instead.
 func (*BlockLocations) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{2}
+	return file_metaserver_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *BlockLocations) GetBlockId() uint64 {
@@ -308,18 +605,71 @@ func (x *BlockLocations) GetLocations() []string {
 	return nil
 }
 
+// 通用的简单响应，用于表示操作成功与否
+type SimpleResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SimpleResponse) Reset() {
+	*x = SimpleResponse{}
+	mi := &file_metaserver_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SimpleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SimpleResponse) ProtoMessage() {}
+
+func (x *SimpleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_metaserver_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SimpleResponse.ProtoReflect.Descriptor instead.
+func (*SimpleResponse) Descriptor() ([]byte, []int) {
+	return file_metaserver_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *SimpleResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *SimpleResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
 // CreateNode
 type CreateNodeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
-	Type          NodeType               `protobuf:"varint,2,opt,name=type,proto3,enum=dfs_project.NodeType" json:"type,omitempty"`
+	Type          FileType               `protobuf:"varint,2,opt,name=type,proto3,enum=dfs_project.FileType" json:"type,omitempty"` // 使用统一的FileType
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateNodeRequest) Reset() {
 	*x = CreateNodeRequest{}
-	mi := &file_metaserver_proto_msgTypes[3]
+	mi := &file_metaserver_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -331,7 +681,7 @@ func (x *CreateNodeRequest) String() string {
 func (*CreateNodeRequest) ProtoMessage() {}
 
 func (x *CreateNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[3]
+	mi := &file_metaserver_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -344,7 +694,7 @@ func (x *CreateNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateNodeRequest.ProtoReflect.Descriptor instead.
 func (*CreateNodeRequest) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{3}
+	return file_metaserver_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CreateNodeRequest) GetPath() string {
@@ -354,14 +704,14 @@ func (x *CreateNodeRequest) GetPath() string {
 	return ""
 }
 
-func (x *CreateNodeRequest) GetType() NodeType {
+func (x *CreateNodeRequest) GetType() FileType {
 	if x != nil {
 		return x.Type
 	}
-	return NodeType_FILE
+	return FileType_Unknown
 }
 
-// GetNodeInfo
+// GetNodeInfo - 返回 StatInfo 供 easyClient 使用
 type GetNodeInfoRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
@@ -371,7 +721,7 @@ type GetNodeInfoRequest struct {
 
 func (x *GetNodeInfoRequest) Reset() {
 	*x = GetNodeInfoRequest{}
-	mi := &file_metaserver_proto_msgTypes[4]
+	mi := &file_metaserver_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -383,7 +733,7 @@ func (x *GetNodeInfoRequest) String() string {
 func (*GetNodeInfoRequest) ProtoMessage() {}
 
 func (x *GetNodeInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[4]
+	mi := &file_metaserver_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -396,7 +746,7 @@ func (x *GetNodeInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetNodeInfoRequest.ProtoReflect.Descriptor instead.
 func (*GetNodeInfoRequest) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{4}
+	return file_metaserver_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetNodeInfoRequest) GetPath() string {
@@ -408,14 +758,14 @@ func (x *GetNodeInfoRequest) GetPath() string {
 
 type GetNodeInfoResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	NodeInfo      *NodeInfo              `protobuf:"bytes,1,opt,name=node_info,json=nodeInfo,proto3" json:"node_info,omitempty"`
+	StatInfo      *StatInfo              `protobuf:"bytes,1,opt,name=statInfo,proto3" json:"statInfo,omitempty"` // 直接返回easyClient需要的格式
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetNodeInfoResponse) Reset() {
 	*x = GetNodeInfoResponse{}
-	mi := &file_metaserver_proto_msgTypes[5]
+	mi := &file_metaserver_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -427,7 +777,7 @@ func (x *GetNodeInfoResponse) String() string {
 func (*GetNodeInfoResponse) ProtoMessage() {}
 
 func (x *GetNodeInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[5]
+	mi := &file_metaserver_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -440,17 +790,17 @@ func (x *GetNodeInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetNodeInfoResponse.ProtoReflect.Descriptor instead.
 func (*GetNodeInfoResponse) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{5}
+	return file_metaserver_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *GetNodeInfoResponse) GetNodeInfo() *NodeInfo {
+func (x *GetNodeInfoResponse) GetStatInfo() *StatInfo {
 	if x != nil {
-		return x.NodeInfo
+		return x.StatInfo
 	}
 	return nil
 }
 
-// ListDirectory
+// ListDirectory - 返回 StatInfo 列表供 easyClient 使用
 type ListDirectoryRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
@@ -460,7 +810,7 @@ type ListDirectoryRequest struct {
 
 func (x *ListDirectoryRequest) Reset() {
 	*x = ListDirectoryRequest{}
-	mi := &file_metaserver_proto_msgTypes[6]
+	mi := &file_metaserver_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -472,7 +822,7 @@ func (x *ListDirectoryRequest) String() string {
 func (*ListDirectoryRequest) ProtoMessage() {}
 
 func (x *ListDirectoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[6]
+	mi := &file_metaserver_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -485,7 +835,7 @@ func (x *ListDirectoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDirectoryRequest.ProtoReflect.Descriptor instead.
 func (*ListDirectoryRequest) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{6}
+	return file_metaserver_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListDirectoryRequest) GetPath() string {
@@ -497,14 +847,14 @@ func (x *ListDirectoryRequest) GetPath() string {
 
 type ListDirectoryResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Nodes         []*NodeInfo            `protobuf:"bytes,1,rep,name=nodes,proto3" json:"nodes,omitempty"` // 返回该目录下所有子节点的列表
+	Nodes         []*StatInfo            `protobuf:"bytes,1,rep,name=nodes,proto3" json:"nodes,omitempty"` // 直接返回easyClient需要的格式
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListDirectoryResponse) Reset() {
 	*x = ListDirectoryResponse{}
-	mi := &file_metaserver_proto_msgTypes[7]
+	mi := &file_metaserver_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -516,7 +866,7 @@ func (x *ListDirectoryResponse) String() string {
 func (*ListDirectoryResponse) ProtoMessage() {}
 
 func (x *ListDirectoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[7]
+	mi := &file_metaserver_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -529,10 +879,10 @@ func (x *ListDirectoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDirectoryResponse.ProtoReflect.Descriptor instead.
 func (*ListDirectoryResponse) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{7}
+	return file_metaserver_proto_rawDescGZIP(), []int{12}
 }
 
-func (x *ListDirectoryResponse) GetNodes() []*NodeInfo {
+func (x *ListDirectoryResponse) GetNodes() []*StatInfo {
 	if x != nil {
 		return x.Nodes
 	}
@@ -543,14 +893,14 @@ func (x *ListDirectoryResponse) GetNodes() []*NodeInfo {
 type DeleteNodeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
-	Recursive     bool                   `protobuf:"varint,2,opt,name=recursive,proto3" json:"recursive,omitempty"` // 是否递归删除
+	Recursive     bool                   `protobuf:"varint,2,opt,name=recursive,proto3" json:"recursive,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DeleteNodeRequest) Reset() {
 	*x = DeleteNodeRequest{}
-	mi := &file_metaserver_proto_msgTypes[8]
+	mi := &file_metaserver_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -562,7 +912,7 @@ func (x *DeleteNodeRequest) String() string {
 func (*DeleteNodeRequest) ProtoMessage() {}
 
 func (x *DeleteNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[8]
+	mi := &file_metaserver_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -575,7 +925,7 @@ func (x *DeleteNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteNodeRequest.ProtoReflect.Descriptor instead.
 func (*DeleteNodeRequest) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{8}
+	return file_metaserver_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DeleteNodeRequest) GetPath() string {
@@ -596,14 +946,14 @@ func (x *DeleteNodeRequest) GetRecursive() bool {
 type GetBlockLocationsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
-	Size          uint64                 `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"` // 对于写操作，Client 告诉 metaServer 文件总大小，以便规划块
+	Size          int64                  `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"` // 对于写操作，Client 告诉 metaServer 文件总大小
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetBlockLocationsRequest) Reset() {
 	*x = GetBlockLocationsRequest{}
-	mi := &file_metaserver_proto_msgTypes[9]
+	mi := &file_metaserver_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -615,7 +965,7 @@ func (x *GetBlockLocationsRequest) String() string {
 func (*GetBlockLocationsRequest) ProtoMessage() {}
 
 func (x *GetBlockLocationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[9]
+	mi := &file_metaserver_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -628,7 +978,7 @@ func (x *GetBlockLocationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBlockLocationsRequest.ProtoReflect.Descriptor instead.
 func (*GetBlockLocationsRequest) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{9}
+	return file_metaserver_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetBlockLocationsRequest) GetPath() string {
@@ -638,7 +988,7 @@ func (x *GetBlockLocationsRequest) GetPath() string {
 	return ""
 }
 
-func (x *GetBlockLocationsRequest) GetSize() uint64 {
+func (x *GetBlockLocationsRequest) GetSize() int64 {
 	if x != nil {
 		return x.Size
 	}
@@ -647,7 +997,7 @@ func (x *GetBlockLocationsRequest) GetSize() uint64 {
 
 type GetBlockLocationsResponse struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	Inode          uint64                 `protobuf:"varint,1,opt,name=inode,proto3" json:"inode,omitempty"` // 返回分配的 inode
+	Inode          uint64                 `protobuf:"varint,1,opt,name=inode,proto3" json:"inode,omitempty"`
 	BlockLocations []*BlockLocations      `protobuf:"bytes,2,rep,name=block_locations,json=blockLocations,proto3" json:"block_locations,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -655,7 +1005,7 @@ type GetBlockLocationsResponse struct {
 
 func (x *GetBlockLocationsResponse) Reset() {
 	*x = GetBlockLocationsResponse{}
-	mi := &file_metaserver_proto_msgTypes[10]
+	mi := &file_metaserver_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -667,7 +1017,7 @@ func (x *GetBlockLocationsResponse) String() string {
 func (*GetBlockLocationsResponse) ProtoMessage() {}
 
 func (x *GetBlockLocationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[10]
+	mi := &file_metaserver_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -680,7 +1030,7 @@ func (x *GetBlockLocationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBlockLocationsResponse.ProtoReflect.Descriptor instead.
 func (*GetBlockLocationsResponse) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{10}
+	return file_metaserver_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetBlockLocationsResponse) GetInode() uint64 {
@@ -702,15 +1052,15 @@ type FinalizeWriteRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
 	Inode         uint64                 `protobuf:"varint,2,opt,name=inode,proto3" json:"inode,omitempty"`
-	Size          uint64                 `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"`
-	Md5           string                 `protobuf:"bytes,4,opt,name=md5,proto3" json:"md5,omitempty"` // 文件MD5哈希值
+	Size          int64                  `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"`
+	Md5           string                 `protobuf:"bytes,4,opt,name=md5,proto3" json:"md5,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *FinalizeWriteRequest) Reset() {
 	*x = FinalizeWriteRequest{}
-	mi := &file_metaserver_proto_msgTypes[11]
+	mi := &file_metaserver_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -722,7 +1072,7 @@ func (x *FinalizeWriteRequest) String() string {
 func (*FinalizeWriteRequest) ProtoMessage() {}
 
 func (x *FinalizeWriteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[11]
+	mi := &file_metaserver_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -735,7 +1085,7 @@ func (x *FinalizeWriteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinalizeWriteRequest.ProtoReflect.Descriptor instead.
 func (*FinalizeWriteRequest) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{11}
+	return file_metaserver_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *FinalizeWriteRequest) GetPath() string {
@@ -752,7 +1102,7 @@ func (x *FinalizeWriteRequest) GetInode() uint64 {
 	return 0
 }
 
-func (x *FinalizeWriteRequest) GetSize() uint64 {
+func (x *FinalizeWriteRequest) GetSize() int64 {
 	if x != nil {
 		return x.Size
 	}
@@ -766,75 +1116,7 @@ func (x *FinalizeWriteRequest) GetMd5() string {
 	return ""
 }
 
-// GetClusterInfo
-type DataServerInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Addr          string                 `protobuf:"bytes,2,opt,name=addr,proto3" json:"addr,omitempty"`
-	BlockCount    uint64                 `protobuf:"varint,3,opt,name=block_count,json=blockCount,proto3" json:"block_count,omitempty"`
-	FreeSpace     uint64                 `protobuf:"varint,4,opt,name=free_space,json=freeSpace,proto3" json:"free_space,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *DataServerInfo) Reset() {
-	*x = DataServerInfo{}
-	mi := &file_metaserver_proto_msgTypes[12]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DataServerInfo) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DataServerInfo) ProtoMessage() {}
-
-func (x *DataServerInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[12]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DataServerInfo.ProtoReflect.Descriptor instead.
-func (*DataServerInfo) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{12}
-}
-
-func (x *DataServerInfo) GetId() string {
-	if x != nil {
-		return x.Id
-	}
-	return ""
-}
-
-func (x *DataServerInfo) GetAddr() string {
-	if x != nil {
-		return x.Addr
-	}
-	return ""
-}
-
-func (x *DataServerInfo) GetBlockCount() uint64 {
-	if x != nil {
-		return x.BlockCount
-	}
-	return 0
-}
-
-func (x *DataServerInfo) GetFreeSpace() uint64 {
-	if x != nil {
-		return x.FreeSpace
-	}
-	return 0
-}
-
+// GetClusterInfo - 直接返回 easyClient 需要的 ClusterInfo
 type GetClusterInfoRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -843,7 +1125,7 @@ type GetClusterInfoRequest struct {
 
 func (x *GetClusterInfoRequest) Reset() {
 	*x = GetClusterInfoRequest{}
-	mi := &file_metaserver_proto_msgTypes[13]
+	mi := &file_metaserver_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -855,7 +1137,7 @@ func (x *GetClusterInfoRequest) String() string {
 func (*GetClusterInfoRequest) ProtoMessage() {}
 
 func (x *GetClusterInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[13]
+	mi := &file_metaserver_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -868,19 +1150,19 @@ func (x *GetClusterInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetClusterInfoRequest.ProtoReflect.Descriptor instead.
 func (*GetClusterInfoRequest) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{13}
+	return file_metaserver_proto_rawDescGZIP(), []int{17}
 }
 
 type GetClusterInfoResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Dataservers   []*DataServerInfo      `protobuf:"bytes,1,rep,name=dataservers,proto3" json:"dataservers,omitempty"`
+	ClusterInfo   *ClusterInfo           `protobuf:"bytes,1,opt,name=clusterInfo,proto3" json:"clusterInfo,omitempty"` // 直接返回easyClient需要的格式
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetClusterInfoResponse) Reset() {
 	*x = GetClusterInfoResponse{}
-	mi := &file_metaserver_proto_msgTypes[14]
+	mi := &file_metaserver_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -892,7 +1174,7 @@ func (x *GetClusterInfoResponse) String() string {
 func (*GetClusterInfoResponse) ProtoMessage() {}
 
 func (x *GetClusterInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[14]
+	mi := &file_metaserver_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -905,31 +1187,31 @@ func (x *GetClusterInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetClusterInfoResponse.ProtoReflect.Descriptor instead.
 func (*GetClusterInfoResponse) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{14}
+	return file_metaserver_proto_rawDescGZIP(), []int{18}
 }
 
-func (x *GetClusterInfoResponse) GetDataservers() []*DataServerInfo {
+func (x *GetClusterInfoResponse) GetClusterInfo() *ClusterInfo {
 	if x != nil {
-		return x.Dataservers
+		return x.ClusterInfo
 	}
 	return nil
 }
 
-// Heartbeat
+// Heartbeat (内部接口，保持不变以兼容DataServer)
 type HeartbeatRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	DataserverId   string                 `protobuf:"bytes,1,opt,name=dataserver_id,json=dataserverId,proto3" json:"dataserver_id,omitempty"`
 	DataserverAddr string                 `protobuf:"bytes,2,opt,name=dataserver_addr,json=dataserverAddr,proto3" json:"dataserver_addr,omitempty"`
 	BlockCount     uint64                 `protobuf:"varint,3,opt,name=block_count,json=blockCount,proto3" json:"block_count,omitempty"`
 	FreeSpace      uint64                 `protobuf:"varint,4,opt,name=free_space,json=freeSpace,proto3" json:"free_space,omitempty"`
-	BlockIdsReport []uint64               `protobuf:"varint,5,rep,packed,name=block_ids_report,json=blockIdsReport,proto3" json:"block_ids_report,omitempty"` // 完整的块报告
+	BlockIdsReport []uint64               `protobuf:"varint,5,rep,packed,name=block_ids_report,json=blockIdsReport,proto3" json:"block_ids_report,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
 
 func (x *HeartbeatRequest) Reset() {
 	*x = HeartbeatRequest{}
-	mi := &file_metaserver_proto_msgTypes[15]
+	mi := &file_metaserver_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -941,7 +1223,7 @@ func (x *HeartbeatRequest) String() string {
 func (*HeartbeatRequest) ProtoMessage() {}
 
 func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[15]
+	mi := &file_metaserver_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -954,7 +1236,7 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{15}
+	return file_metaserver_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *HeartbeatRequest) GetDataserverId() string {
@@ -992,21 +1274,18 @@ func (x *HeartbeatRequest) GetBlockIdsReport() []uint64 {
 	return nil
 }
 
-// 心跳响应可以携带来自 metaServer 的指令
 type Command struct {
-	state   protoimpl.MessageState `protogen:"open.v1"`
-	Action  Command_Action         `protobuf:"varint,1,opt,name=action,proto3,enum=dfs_project.Command_Action" json:"action,omitempty"`
-	BlockId uint64                 `protobuf:"varint,2,opt,name=block_id,json=blockId,proto3" json:"block_id,omitempty"`
-	// 对于 COPY_BLOCK，这里是源地址
-	// 对于其他指令，可以为空
-	Targets       []string `protobuf:"bytes,3,rep,name=targets,proto3" json:"targets,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Action        Command_Action         `protobuf:"varint,1,opt,name=action,proto3,enum=dfs_project.Command_Action" json:"action,omitempty"`
+	BlockId       uint64                 `protobuf:"varint,2,opt,name=block_id,json=blockId,proto3" json:"block_id,omitempty"`
+	Targets       []string               `protobuf:"bytes,3,rep,name=targets,proto3" json:"targets,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Command) Reset() {
 	*x = Command{}
-	mi := &file_metaserver_proto_msgTypes[16]
+	mi := &file_metaserver_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1018,7 +1297,7 @@ func (x *Command) String() string {
 func (*Command) ProtoMessage() {}
 
 func (x *Command) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[16]
+	mi := &file_metaserver_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1031,7 +1310,7 @@ func (x *Command) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Command.ProtoReflect.Descriptor instead.
 func (*Command) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{16}
+	return file_metaserver_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Command) GetAction() Command_Action {
@@ -1064,7 +1343,7 @@ type HeartbeatResponse struct {
 
 func (x *HeartbeatResponse) Reset() {
 	*x = HeartbeatResponse{}
-	mi := &file_metaserver_proto_msgTypes[17]
+	mi := &file_metaserver_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1076,7 +1355,7 @@ func (x *HeartbeatResponse) String() string {
 func (*HeartbeatResponse) ProtoMessage() {}
 
 func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[17]
+	mi := &file_metaserver_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1089,7 +1368,7 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{17}
+	return file_metaserver_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *HeartbeatResponse) GetCommands() []*Command {
@@ -1102,14 +1381,14 @@ func (x *HeartbeatResponse) GetCommands() []*Command {
 // GetReplicationInfo
 type GetReplicationInfoRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"` // 文件路径，为空表示查询所有文件
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetReplicationInfoRequest) Reset() {
 	*x = GetReplicationInfoRequest{}
-	mi := &file_metaserver_proto_msgTypes[18]
+	mi := &file_metaserver_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1121,7 +1400,7 @@ func (x *GetReplicationInfoRequest) String() string {
 func (*GetReplicationInfoRequest) ProtoMessage() {}
 
 func (x *GetReplicationInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[18]
+	mi := &file_metaserver_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1134,7 +1413,7 @@ func (x *GetReplicationInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetReplicationInfoRequest.ProtoReflect.Descriptor instead.
 func (*GetReplicationInfoRequest) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{18}
+	return file_metaserver_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *GetReplicationInfoRequest) GetPath() string {
@@ -1144,22 +1423,90 @@ func (x *GetReplicationInfoRequest) GetPath() string {
 	return ""
 }
 
+type BlockReplicationInfo struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	BlockId           uint64                 `protobuf:"varint,1,opt,name=block_id,json=blockId,proto3" json:"block_id,omitempty"`
+	Locations         []string               `protobuf:"bytes,2,rep,name=locations,proto3" json:"locations,omitempty"`
+	ExpectedLocations []string               `protobuf:"bytes,3,rep,name=expected_locations,json=expectedLocations,proto3" json:"expected_locations,omitempty"`
+	ReplicaCount      uint32                 `protobuf:"varint,4,opt,name=replica_count,json=replicaCount,proto3" json:"replica_count,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *BlockReplicationInfo) Reset() {
+	*x = BlockReplicationInfo{}
+	mi := &file_metaserver_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BlockReplicationInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BlockReplicationInfo) ProtoMessage() {}
+
+func (x *BlockReplicationInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_metaserver_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BlockReplicationInfo.ProtoReflect.Descriptor instead.
+func (*BlockReplicationInfo) Descriptor() ([]byte, []int) {
+	return file_metaserver_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *BlockReplicationInfo) GetBlockId() uint64 {
+	if x != nil {
+		return x.BlockId
+	}
+	return 0
+}
+
+func (x *BlockReplicationInfo) GetLocations() []string {
+	if x != nil {
+		return x.Locations
+	}
+	return nil
+}
+
+func (x *BlockReplicationInfo) GetExpectedLocations() []string {
+	if x != nil {
+		return x.ExpectedLocations
+	}
+	return nil
+}
+
+func (x *BlockReplicationInfo) GetReplicaCount() uint32 {
+	if x != nil {
+		return x.ReplicaCount
+	}
+	return 0
+}
+
 type ReplicationStatus struct {
 	state            protoimpl.MessageState  `protogen:"open.v1"`
-	Path             string                  `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`                                                  // 文件路径
-	Inode            uint64                  `protobuf:"varint,2,opt,name=inode,proto3" json:"inode,omitempty"`                                               // 文件inode
-	Size             uint64                  `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"`                                                 // 文件大小
-	ExpectedReplicas uint32                  `protobuf:"varint,4,opt,name=expected_replicas,json=expectedReplicas,proto3" json:"expected_replicas,omitempty"` // 期望副本数
-	ActualReplicas   uint32                  `protobuf:"varint,5,opt,name=actual_replicas,json=actualReplicas,proto3" json:"actual_replicas,omitempty"`       // 实际副本数
-	Blocks           []*BlockReplicationInfo `protobuf:"bytes,6,rep,name=blocks,proto3" json:"blocks,omitempty"`                                              // 各块的副本信息
-	Status           string                  `protobuf:"bytes,7,opt,name=status,proto3" json:"status,omitempty"`                                              // 状态: "healthy", "under_replicated", "over_replicated"
+	Path             string                  `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Inode            uint64                  `protobuf:"varint,2,opt,name=inode,proto3" json:"inode,omitempty"`
+	Size             int64                   `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"` // 改为 int64
+	ExpectedReplicas uint32                  `protobuf:"varint,4,opt,name=expected_replicas,json=expectedReplicas,proto3" json:"expected_replicas,omitempty"`
+	ActualReplicas   uint32                  `protobuf:"varint,5,opt,name=actual_replicas,json=actualReplicas,proto3" json:"actual_replicas,omitempty"`
+	Blocks           []*BlockReplicationInfo `protobuf:"bytes,6,rep,name=blocks,proto3" json:"blocks,omitempty"`
+	Status           string                  `protobuf:"bytes,7,opt,name=status,proto3" json:"status,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ReplicationStatus) Reset() {
 	*x = ReplicationStatus{}
-	mi := &file_metaserver_proto_msgTypes[19]
+	mi := &file_metaserver_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1171,7 +1518,7 @@ func (x *ReplicationStatus) String() string {
 func (*ReplicationStatus) ProtoMessage() {}
 
 func (x *ReplicationStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[19]
+	mi := &file_metaserver_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1184,7 +1531,7 @@ func (x *ReplicationStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicationStatus.ProtoReflect.Descriptor instead.
 func (*ReplicationStatus) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{19}
+	return file_metaserver_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ReplicationStatus) GetPath() string {
@@ -1201,7 +1548,7 @@ func (x *ReplicationStatus) GetInode() uint64 {
 	return 0
 }
 
-func (x *ReplicationStatus) GetSize() uint64 {
+func (x *ReplicationStatus) GetSize() int64 {
 	if x != nil {
 		return x.Size
 	}
@@ -1236,74 +1583,6 @@ func (x *ReplicationStatus) GetStatus() string {
 	return ""
 }
 
-type BlockReplicationInfo struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	BlockId           uint64                 `protobuf:"varint,1,opt,name=block_id,json=blockId,proto3" json:"block_id,omitempty"`                              // 块ID
-	Locations         []string               `protobuf:"bytes,2,rep,name=locations,proto3" json:"locations,omitempty"`                                          // 实际存储位置
-	ExpectedLocations []string               `protobuf:"bytes,3,rep,name=expected_locations,json=expectedLocations,proto3" json:"expected_locations,omitempty"` // 期望存储位置
-	ReplicaCount      uint32                 `protobuf:"varint,4,opt,name=replica_count,json=replicaCount,proto3" json:"replica_count,omitempty"`               // 实际副本数
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
-}
-
-func (x *BlockReplicationInfo) Reset() {
-	*x = BlockReplicationInfo{}
-	mi := &file_metaserver_proto_msgTypes[20]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *BlockReplicationInfo) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*BlockReplicationInfo) ProtoMessage() {}
-
-func (x *BlockReplicationInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[20]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use BlockReplicationInfo.ProtoReflect.Descriptor instead.
-func (*BlockReplicationInfo) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{20}
-}
-
-func (x *BlockReplicationInfo) GetBlockId() uint64 {
-	if x != nil {
-		return x.BlockId
-	}
-	return 0
-}
-
-func (x *BlockReplicationInfo) GetLocations() []string {
-	if x != nil {
-		return x.Locations
-	}
-	return nil
-}
-
-func (x *BlockReplicationInfo) GetExpectedLocations() []string {
-	if x != nil {
-		return x.ExpectedLocations
-	}
-	return nil
-}
-
-func (x *BlockReplicationInfo) GetReplicaCount() uint32 {
-	if x != nil {
-		return x.ReplicaCount
-	}
-	return 0
-}
-
 type GetReplicationInfoResponse struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	Files                []*ReplicationStatus   `protobuf:"bytes,1,rep,name=files,proto3" json:"files,omitempty"`
@@ -1317,7 +1596,7 @@ type GetReplicationInfoResponse struct {
 
 func (x *GetReplicationInfoResponse) Reset() {
 	*x = GetReplicationInfoResponse{}
-	mi := &file_metaserver_proto_msgTypes[21]
+	mi := &file_metaserver_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1329,7 +1608,7 @@ func (x *GetReplicationInfoResponse) String() string {
 func (*GetReplicationInfoResponse) ProtoMessage() {}
 
 func (x *GetReplicationInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[21]
+	mi := &file_metaserver_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1342,7 +1621,7 @@ func (x *GetReplicationInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetReplicationInfoResponse.ProtoReflect.Descriptor instead.
 func (*GetReplicationInfoResponse) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{21}
+	return file_metaserver_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetReplicationInfoResponse) GetFiles() []*ReplicationStatus {
@@ -1380,17 +1659,105 @@ func (x *GetReplicationInfoResponse) GetOverReplicatedFiles() uint32 {
 	return 0
 }
 
+type GetLeaderRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetLeaderRequest) Reset() {
+	*x = GetLeaderRequest{}
+	mi := &file_metaserver_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetLeaderRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetLeaderRequest) ProtoMessage() {}
+
+func (x *GetLeaderRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_metaserver_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetLeaderRequest.ProtoReflect.Descriptor instead.
+func (*GetLeaderRequest) Descriptor() ([]byte, []int) {
+	return file_metaserver_proto_rawDescGZIP(), []int{26}
+}
+
+type GetLeaderResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Leader        *MetaServerMsg         `protobuf:"bytes,1,opt,name=leader,proto3" json:"leader,omitempty"`
+	Followers     []*MetaServerMsg       `protobuf:"bytes,2,rep,name=followers,proto3" json:"followers,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetLeaderResponse) Reset() {
+	*x = GetLeaderResponse{}
+	mi := &file_metaserver_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetLeaderResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetLeaderResponse) ProtoMessage() {}
+
+func (x *GetLeaderResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_metaserver_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetLeaderResponse.ProtoReflect.Descriptor instead.
+func (*GetLeaderResponse) Descriptor() ([]byte, []int) {
+	return file_metaserver_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *GetLeaderResponse) GetLeader() *MetaServerMsg {
+	if x != nil {
+		return x.Leader
+	}
+	return nil
+}
+
+func (x *GetLeaderResponse) GetFollowers() []*MetaServerMsg {
+	if x != nil {
+		return x.Followers
+	}
+	return nil
+}
+
 // SyncWAL (用于主从同步)
 type LogEntry struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"` // 序列化后的操作指令
+	Data          []byte                 `protobuf:"bytes,1,opt,name=data,proto3" json:"data,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *LogEntry) Reset() {
 	*x = LogEntry{}
-	mi := &file_metaserver_proto_msgTypes[22]
+	mi := &file_metaserver_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1402,7 +1769,7 @@ func (x *LogEntry) String() string {
 func (*LogEntry) ProtoMessage() {}
 
 func (x *LogEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_metaserver_proto_msgTypes[22]
+	mi := &file_metaserver_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1415,7 +1782,7 @@ func (x *LogEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogEntry.ProtoReflect.Descriptor instead.
 func (*LogEntry) Descriptor() ([]byte, []int) {
-	return file_metaserver_proto_rawDescGZIP(), []int{22}
+	return file_metaserver_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *LogEntry) GetData() []byte {
@@ -1429,55 +1796,75 @@ var File_metaserver_proto protoreflect.FileDescriptor
 
 const file_metaserver_proto_rawDesc = "" +
 	"\n" +
-	"\x10metaserver.proto\x12\vdfs_project\x1a\x1fgoogle/protobuf/timestamp.proto\"*\n" +
-	"\x0eSimpleResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\"\xde\x01\n" +
+	"\x10metaserver.proto\x12\vdfs_project\"I\n" +
+	"\vReplicaData\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
+	"\x06dsNode\x18\x02 \x01(\tR\x06dsNode\x12\x12\n" +
+	"\x04path\x18\x03 \x01(\tR\x04path\"\xaf\x01\n" +
+	"\bStatInfo\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
+	"\x04size\x18\x02 \x01(\x03R\x04size\x12\x14\n" +
+	"\x05mtime\x18\x03 \x01(\x03R\x05mtime\x12)\n" +
+	"\x04type\x18\x04 \x01(\x0e2\x15.dfs_project.FileTypeR\x04type\x12:\n" +
+	"\vreplicaData\x18\x05 \x03(\v2\x18.dfs_project.ReplicaDataR\vreplicaData\"7\n" +
+	"\rMetaServerMsg\x12\x12\n" +
+	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
+	"\x04port\x18\x02 \x01(\x05R\x04port\"\x93\x01\n" +
+	"\rDataServerMsg\x12\x12\n" +
+	"\x04host\x18\x01 \x01(\tR\x04host\x12\x12\n" +
+	"\x04port\x18\x02 \x01(\x05R\x04port\x12\x1c\n" +
+	"\tfileTotal\x18\x03 \x01(\x05R\tfileTotal\x12\x1a\n" +
+	"\bcapacity\x18\x04 \x01(\x05R\bcapacity\x12 \n" +
+	"\vuseCapacity\x18\x05 \x01(\x05R\vuseCapacity\"\xd7\x01\n" +
+	"\vClusterInfo\x12F\n" +
+	"\x10masterMetaServer\x18\x01 \x01(\v2\x1a.dfs_project.MetaServerMsgR\x10masterMetaServer\x12D\n" +
+	"\x0fslaveMetaServer\x18\x02 \x03(\v2\x1a.dfs_project.MetaServerMsgR\x0fslaveMetaServer\x12:\n" +
+	"\n" +
+	"dataServer\x18\x03 \x03(\v2\x1a.dfs_project.DataServerMsgR\n" +
+	"dataServer\"\xf9\x01\n" +
 	"\bNodeInfo\x12\x14\n" +
 	"\x05inode\x18\x01 \x01(\x04R\x05inode\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12)\n" +
-	"\x04type\x18\x03 \x01(\x0e2\x15.dfs_project.NodeTypeR\x04type\x12\x12\n" +
-	"\x04size\x18\x04 \x01(\x04R\x04size\x125\n" +
-	"\bmod_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\amodTime\x12 \n" +
+	"\x04type\x18\x03 \x01(\x0e2\x15.dfs_project.FileTypeR\x04type\x12\x12\n" +
+	"\x04size\x18\x04 \x01(\x03R\x04size\x12\x14\n" +
+	"\x05mtime\x18\x05 \x01(\x03R\x05mtime\x12 \n" +
 	"\vreplication\x18\x06 \x01(\rR\vreplication\x12\x10\n" +
-	"\x03md5\x18\a \x01(\tR\x03md5\"I\n" +
+	"\x03md5\x18\a \x01(\tR\x03md5\x12:\n" +
+	"\vreplicaData\x18\b \x03(\v2\x18.dfs_project.ReplicaDataR\vreplicaData\"I\n" +
 	"\x0eBlockLocations\x12\x19\n" +
 	"\bblock_id\x18\x01 \x01(\x04R\ablockId\x12\x1c\n" +
-	"\tlocations\x18\x02 \x03(\tR\tlocations\"R\n" +
+	"\tlocations\x18\x02 \x03(\tR\tlocations\"D\n" +
+	"\x0eSimpleResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"R\n" +
 	"\x11CreateNodeRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12)\n" +
-	"\x04type\x18\x02 \x01(\x0e2\x15.dfs_project.NodeTypeR\x04type\"(\n" +
+	"\x04type\x18\x02 \x01(\x0e2\x15.dfs_project.FileTypeR\x04type\"(\n" +
 	"\x12GetNodeInfoRequest\x12\x12\n" +
-	"\x04path\x18\x01 \x01(\tR\x04path\"I\n" +
-	"\x13GetNodeInfoResponse\x122\n" +
-	"\tnode_info\x18\x01 \x01(\v2\x15.dfs_project.NodeInfoR\bnodeInfo\"*\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\"H\n" +
+	"\x13GetNodeInfoResponse\x121\n" +
+	"\bstatInfo\x18\x01 \x01(\v2\x15.dfs_project.StatInfoR\bstatInfo\"*\n" +
 	"\x14ListDirectoryRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\"D\n" +
 	"\x15ListDirectoryResponse\x12+\n" +
-	"\x05nodes\x18\x01 \x03(\v2\x15.dfs_project.NodeInfoR\x05nodes\"E\n" +
+	"\x05nodes\x18\x01 \x03(\v2\x15.dfs_project.StatInfoR\x05nodes\"E\n" +
 	"\x11DeleteNodeRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x1c\n" +
 	"\trecursive\x18\x02 \x01(\bR\trecursive\"B\n" +
 	"\x18GetBlockLocationsRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
-	"\x04size\x18\x02 \x01(\x04R\x04size\"w\n" +
+	"\x04size\x18\x02 \x01(\x03R\x04size\"w\n" +
 	"\x19GetBlockLocationsResponse\x12\x14\n" +
 	"\x05inode\x18\x01 \x01(\x04R\x05inode\x12D\n" +
 	"\x0fblock_locations\x18\x02 \x03(\v2\x1b.dfs_project.BlockLocationsR\x0eblockLocations\"f\n" +
 	"\x14FinalizeWriteRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x14\n" +
 	"\x05inode\x18\x02 \x01(\x04R\x05inode\x12\x12\n" +
-	"\x04size\x18\x03 \x01(\x04R\x04size\x12\x10\n" +
-	"\x03md5\x18\x04 \x01(\tR\x03md5\"t\n" +
-	"\x0eDataServerInfo\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
-	"\x04addr\x18\x02 \x01(\tR\x04addr\x12\x1f\n" +
-	"\vblock_count\x18\x03 \x01(\x04R\n" +
-	"blockCount\x12\x1d\n" +
-	"\n" +
-	"free_space\x18\x04 \x01(\x04R\tfreeSpace\"\x17\n" +
-	"\x15GetClusterInfoRequest\"W\n" +
-	"\x16GetClusterInfoResponse\x12=\n" +
-	"\vdataservers\x18\x01 \x03(\v2\x1b.dfs_project.DataServerInfoR\vdataservers\"\xca\x01\n" +
+	"\x04size\x18\x03 \x01(\x03R\x04size\x12\x10\n" +
+	"\x03md5\x18\x04 \x01(\tR\x03md5\"\x17\n" +
+	"\x15GetClusterInfoRequest\"T\n" +
+	"\x16GetClusterInfoResponse\x12:\n" +
+	"\vclusterInfo\x18\x01 \x01(\v2\x18.dfs_project.ClusterInfoR\vclusterInfo\"\xca\x01\n" +
 	"\x10HeartbeatRequest\x12#\n" +
 	"\rdataserver_id\x18\x01 \x01(\tR\fdataserverId\x12'\n" +
 	"\x0fdataserver_addr\x18\x02 \x01(\tR\x0edataserverAddr\x12\x1f\n" +
@@ -1497,32 +1884,39 @@ const file_metaserver_proto_rawDesc = "" +
 	"\x11HeartbeatResponse\x120\n" +
 	"\bcommands\x18\x01 \x03(\v2\x14.dfs_project.CommandR\bcommands\"/\n" +
 	"\x19GetReplicationInfoRequest\x12\x12\n" +
-	"\x04path\x18\x01 \x01(\tR\x04path\"\xfa\x01\n" +
-	"\x11ReplicationStatus\x12\x12\n" +
-	"\x04path\x18\x01 \x01(\tR\x04path\x12\x14\n" +
-	"\x05inode\x18\x02 \x01(\x04R\x05inode\x12\x12\n" +
-	"\x04size\x18\x03 \x01(\x04R\x04size\x12+\n" +
-	"\x11expected_replicas\x18\x04 \x01(\rR\x10expectedReplicas\x12'\n" +
-	"\x0factual_replicas\x18\x05 \x01(\rR\x0eactualReplicas\x129\n" +
-	"\x06blocks\x18\x06 \x03(\v2!.dfs_project.BlockReplicationInfoR\x06blocks\x12\x16\n" +
-	"\x06status\x18\a \x01(\tR\x06status\"\xa3\x01\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\"\xa3\x01\n" +
 	"\x14BlockReplicationInfo\x12\x19\n" +
 	"\bblock_id\x18\x01 \x01(\x04R\ablockId\x12\x1c\n" +
 	"\tlocations\x18\x02 \x03(\tR\tlocations\x12-\n" +
 	"\x12expected_locations\x18\x03 \x03(\tR\x11expectedLocations\x12#\n" +
-	"\rreplica_count\x18\x04 \x01(\rR\freplicaCount\"\x82\x02\n" +
+	"\rreplica_count\x18\x04 \x01(\rR\freplicaCount\"\xfa\x01\n" +
+	"\x11ReplicationStatus\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x14\n" +
+	"\x05inode\x18\x02 \x01(\x04R\x05inode\x12\x12\n" +
+	"\x04size\x18\x03 \x01(\x03R\x04size\x12+\n" +
+	"\x11expected_replicas\x18\x04 \x01(\rR\x10expectedReplicas\x12'\n" +
+	"\x0factual_replicas\x18\x05 \x01(\rR\x0eactualReplicas\x129\n" +
+	"\x06blocks\x18\x06 \x03(\v2!.dfs_project.BlockReplicationInfoR\x06blocks\x12\x16\n" +
+	"\x06status\x18\a \x01(\tR\x06status\"\x82\x02\n" +
 	"\x1aGetReplicationInfoResponse\x124\n" +
 	"\x05files\x18\x01 \x03(\v2\x1e.dfs_project.ReplicationStatusR\x05files\x12\x1f\n" +
 	"\vtotal_files\x18\x02 \x01(\rR\n" +
 	"totalFiles\x12#\n" +
 	"\rhealthy_files\x18\x03 \x01(\rR\fhealthyFiles\x124\n" +
 	"\x16under_replicated_files\x18\x04 \x01(\rR\x14underReplicatedFiles\x122\n" +
-	"\x15over_replicated_files\x18\x05 \x01(\rR\x13overReplicatedFiles\"\x1e\n" +
+	"\x15over_replicated_files\x18\x05 \x01(\rR\x13overReplicatedFiles\"\x12\n" +
+	"\x10GetLeaderRequest\"\x81\x01\n" +
+	"\x11GetLeaderResponse\x122\n" +
+	"\x06leader\x18\x01 \x01(\v2\x1a.dfs_project.MetaServerMsgR\x06leader\x128\n" +
+	"\tfollowers\x18\x02 \x03(\v2\x1a.dfs_project.MetaServerMsgR\tfollowers\"\x1e\n" +
 	"\bLogEntry\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data*#\n" +
-	"\bNodeType\x12\b\n" +
-	"\x04FILE\x10\x00\x12\r\n" +
-	"\tDIRECTORY\x10\x012\xd7\x06\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data*<\n" +
+	"\bFileType\x12\v\n" +
+	"\aUnknown\x10\x00\x12\n" +
+	"\n" +
+	"\x06Volume\x10\x01\x12\b\n" +
+	"\x04File\x10\x02\x12\r\n" +
+	"\tDirectory\x10\x032\xa3\a\n" +
 	"\x11MetaServerService\x12I\n" +
 	"\n" +
 	"CreateNode\x12\x1e.dfs_project.CreateNodeRequest\x1a\x1b.dfs_project.SimpleResponse\x12P\n" +
@@ -1535,7 +1929,8 @@ const file_metaserver_proto_rawDesc = "" +
 	"\x0eGetClusterInfo\x12\".dfs_project.GetClusterInfoRequest\x1a#.dfs_project.GetClusterInfoResponse\x12e\n" +
 	"\x12GetReplicationInfo\x12&.dfs_project.GetReplicationInfoRequest\x1a'.dfs_project.GetReplicationInfoResponse\x12J\n" +
 	"\tHeartbeat\x12\x1d.dfs_project.HeartbeatRequest\x1a\x1e.dfs_project.HeartbeatResponse\x12?\n" +
-	"\aSyncWAL\x12\x15.dfs_project.LogEntry\x1a\x1b.dfs_project.SimpleResponse(\x01B\x06Z\x04./pbb\x06proto3"
+	"\aSyncWAL\x12\x15.dfs_project.LogEntry\x1a\x1b.dfs_project.SimpleResponse(\x01\x12J\n" +
+	"\tGetLeader\x12\x1d.dfs_project.GetLeaderRequest\x1a\x1e.dfs_project.GetLeaderResponseB\x06Z\x04./pbb\x06proto3"
 
 var (
 	file_metaserver_proto_rawDescOnce sync.Once
@@ -1550,72 +1945,86 @@ func file_metaserver_proto_rawDescGZIP() []byte {
 }
 
 var file_metaserver_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_metaserver_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_metaserver_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_metaserver_proto_goTypes = []any{
-	(NodeType)(0),                      // 0: dfs_project.NodeType
+	(FileType)(0),                      // 0: dfs_project.FileType
 	(Command_Action)(0),                // 1: dfs_project.Command.Action
-	(*SimpleResponse)(nil),             // 2: dfs_project.SimpleResponse
-	(*NodeInfo)(nil),                   // 3: dfs_project.NodeInfo
-	(*BlockLocations)(nil),             // 4: dfs_project.BlockLocations
-	(*CreateNodeRequest)(nil),          // 5: dfs_project.CreateNodeRequest
-	(*GetNodeInfoRequest)(nil),         // 6: dfs_project.GetNodeInfoRequest
-	(*GetNodeInfoResponse)(nil),        // 7: dfs_project.GetNodeInfoResponse
-	(*ListDirectoryRequest)(nil),       // 8: dfs_project.ListDirectoryRequest
-	(*ListDirectoryResponse)(nil),      // 9: dfs_project.ListDirectoryResponse
-	(*DeleteNodeRequest)(nil),          // 10: dfs_project.DeleteNodeRequest
-	(*GetBlockLocationsRequest)(nil),   // 11: dfs_project.GetBlockLocationsRequest
-	(*GetBlockLocationsResponse)(nil),  // 12: dfs_project.GetBlockLocationsResponse
-	(*FinalizeWriteRequest)(nil),       // 13: dfs_project.FinalizeWriteRequest
-	(*DataServerInfo)(nil),             // 14: dfs_project.DataServerInfo
-	(*GetClusterInfoRequest)(nil),      // 15: dfs_project.GetClusterInfoRequest
-	(*GetClusterInfoResponse)(nil),     // 16: dfs_project.GetClusterInfoResponse
-	(*HeartbeatRequest)(nil),           // 17: dfs_project.HeartbeatRequest
-	(*Command)(nil),                    // 18: dfs_project.Command
-	(*HeartbeatResponse)(nil),          // 19: dfs_project.HeartbeatResponse
-	(*GetReplicationInfoRequest)(nil),  // 20: dfs_project.GetReplicationInfoRequest
-	(*ReplicationStatus)(nil),          // 21: dfs_project.ReplicationStatus
-	(*BlockReplicationInfo)(nil),       // 22: dfs_project.BlockReplicationInfo
-	(*GetReplicationInfoResponse)(nil), // 23: dfs_project.GetReplicationInfoResponse
-	(*LogEntry)(nil),                   // 24: dfs_project.LogEntry
-	(*timestamp.Timestamp)(nil),        // 25: google.protobuf.Timestamp
+	(*ReplicaData)(nil),                // 2: dfs_project.ReplicaData
+	(*StatInfo)(nil),                   // 3: dfs_project.StatInfo
+	(*MetaServerMsg)(nil),              // 4: dfs_project.MetaServerMsg
+	(*DataServerMsg)(nil),              // 5: dfs_project.DataServerMsg
+	(*ClusterInfo)(nil),                // 6: dfs_project.ClusterInfo
+	(*NodeInfo)(nil),                   // 7: dfs_project.NodeInfo
+	(*BlockLocations)(nil),             // 8: dfs_project.BlockLocations
+	(*SimpleResponse)(nil),             // 9: dfs_project.SimpleResponse
+	(*CreateNodeRequest)(nil),          // 10: dfs_project.CreateNodeRequest
+	(*GetNodeInfoRequest)(nil),         // 11: dfs_project.GetNodeInfoRequest
+	(*GetNodeInfoResponse)(nil),        // 12: dfs_project.GetNodeInfoResponse
+	(*ListDirectoryRequest)(nil),       // 13: dfs_project.ListDirectoryRequest
+	(*ListDirectoryResponse)(nil),      // 14: dfs_project.ListDirectoryResponse
+	(*DeleteNodeRequest)(nil),          // 15: dfs_project.DeleteNodeRequest
+	(*GetBlockLocationsRequest)(nil),   // 16: dfs_project.GetBlockLocationsRequest
+	(*GetBlockLocationsResponse)(nil),  // 17: dfs_project.GetBlockLocationsResponse
+	(*FinalizeWriteRequest)(nil),       // 18: dfs_project.FinalizeWriteRequest
+	(*GetClusterInfoRequest)(nil),      // 19: dfs_project.GetClusterInfoRequest
+	(*GetClusterInfoResponse)(nil),     // 20: dfs_project.GetClusterInfoResponse
+	(*HeartbeatRequest)(nil),           // 21: dfs_project.HeartbeatRequest
+	(*Command)(nil),                    // 22: dfs_project.Command
+	(*HeartbeatResponse)(nil),          // 23: dfs_project.HeartbeatResponse
+	(*GetReplicationInfoRequest)(nil),  // 24: dfs_project.GetReplicationInfoRequest
+	(*BlockReplicationInfo)(nil),       // 25: dfs_project.BlockReplicationInfo
+	(*ReplicationStatus)(nil),          // 26: dfs_project.ReplicationStatus
+	(*GetReplicationInfoResponse)(nil), // 27: dfs_project.GetReplicationInfoResponse
+	(*GetLeaderRequest)(nil),           // 28: dfs_project.GetLeaderRequest
+	(*GetLeaderResponse)(nil),          // 29: dfs_project.GetLeaderResponse
+	(*LogEntry)(nil),                   // 30: dfs_project.LogEntry
 }
 var file_metaserver_proto_depIdxs = []int32{
-	0,  // 0: dfs_project.NodeInfo.type:type_name -> dfs_project.NodeType
-	25, // 1: dfs_project.NodeInfo.mod_time:type_name -> google.protobuf.Timestamp
-	0,  // 2: dfs_project.CreateNodeRequest.type:type_name -> dfs_project.NodeType
-	3,  // 3: dfs_project.GetNodeInfoResponse.node_info:type_name -> dfs_project.NodeInfo
-	3,  // 4: dfs_project.ListDirectoryResponse.nodes:type_name -> dfs_project.NodeInfo
-	4,  // 5: dfs_project.GetBlockLocationsResponse.block_locations:type_name -> dfs_project.BlockLocations
-	14, // 6: dfs_project.GetClusterInfoResponse.dataservers:type_name -> dfs_project.DataServerInfo
-	1,  // 7: dfs_project.Command.action:type_name -> dfs_project.Command.Action
-	18, // 8: dfs_project.HeartbeatResponse.commands:type_name -> dfs_project.Command
-	22, // 9: dfs_project.ReplicationStatus.blocks:type_name -> dfs_project.BlockReplicationInfo
-	21, // 10: dfs_project.GetReplicationInfoResponse.files:type_name -> dfs_project.ReplicationStatus
-	5,  // 11: dfs_project.MetaServerService.CreateNode:input_type -> dfs_project.CreateNodeRequest
-	6,  // 12: dfs_project.MetaServerService.GetNodeInfo:input_type -> dfs_project.GetNodeInfoRequest
-	8,  // 13: dfs_project.MetaServerService.ListDirectory:input_type -> dfs_project.ListDirectoryRequest
-	10, // 14: dfs_project.MetaServerService.DeleteNode:input_type -> dfs_project.DeleteNodeRequest
-	11, // 15: dfs_project.MetaServerService.GetBlockLocations:input_type -> dfs_project.GetBlockLocationsRequest
-	13, // 16: dfs_project.MetaServerService.FinalizeWrite:input_type -> dfs_project.FinalizeWriteRequest
-	15, // 17: dfs_project.MetaServerService.GetClusterInfo:input_type -> dfs_project.GetClusterInfoRequest
-	20, // 18: dfs_project.MetaServerService.GetReplicationInfo:input_type -> dfs_project.GetReplicationInfoRequest
-	17, // 19: dfs_project.MetaServerService.Heartbeat:input_type -> dfs_project.HeartbeatRequest
-	24, // 20: dfs_project.MetaServerService.SyncWAL:input_type -> dfs_project.LogEntry
-	2,  // 21: dfs_project.MetaServerService.CreateNode:output_type -> dfs_project.SimpleResponse
-	7,  // 22: dfs_project.MetaServerService.GetNodeInfo:output_type -> dfs_project.GetNodeInfoResponse
-	9,  // 23: dfs_project.MetaServerService.ListDirectory:output_type -> dfs_project.ListDirectoryResponse
-	2,  // 24: dfs_project.MetaServerService.DeleteNode:output_type -> dfs_project.SimpleResponse
-	12, // 25: dfs_project.MetaServerService.GetBlockLocations:output_type -> dfs_project.GetBlockLocationsResponse
-	2,  // 26: dfs_project.MetaServerService.FinalizeWrite:output_type -> dfs_project.SimpleResponse
-	16, // 27: dfs_project.MetaServerService.GetClusterInfo:output_type -> dfs_project.GetClusterInfoResponse
-	23, // 28: dfs_project.MetaServerService.GetReplicationInfo:output_type -> dfs_project.GetReplicationInfoResponse
-	19, // 29: dfs_project.MetaServerService.Heartbeat:output_type -> dfs_project.HeartbeatResponse
-	2,  // 30: dfs_project.MetaServerService.SyncWAL:output_type -> dfs_project.SimpleResponse
-	21, // [21:31] is the sub-list for method output_type
-	11, // [11:21] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	0,  // 0: dfs_project.StatInfo.type:type_name -> dfs_project.FileType
+	2,  // 1: dfs_project.StatInfo.replicaData:type_name -> dfs_project.ReplicaData
+	4,  // 2: dfs_project.ClusterInfo.masterMetaServer:type_name -> dfs_project.MetaServerMsg
+	4,  // 3: dfs_project.ClusterInfo.slaveMetaServer:type_name -> dfs_project.MetaServerMsg
+	5,  // 4: dfs_project.ClusterInfo.dataServer:type_name -> dfs_project.DataServerMsg
+	0,  // 5: dfs_project.NodeInfo.type:type_name -> dfs_project.FileType
+	2,  // 6: dfs_project.NodeInfo.replicaData:type_name -> dfs_project.ReplicaData
+	0,  // 7: dfs_project.CreateNodeRequest.type:type_name -> dfs_project.FileType
+	3,  // 8: dfs_project.GetNodeInfoResponse.statInfo:type_name -> dfs_project.StatInfo
+	3,  // 9: dfs_project.ListDirectoryResponse.nodes:type_name -> dfs_project.StatInfo
+	8,  // 10: dfs_project.GetBlockLocationsResponse.block_locations:type_name -> dfs_project.BlockLocations
+	6,  // 11: dfs_project.GetClusterInfoResponse.clusterInfo:type_name -> dfs_project.ClusterInfo
+	1,  // 12: dfs_project.Command.action:type_name -> dfs_project.Command.Action
+	22, // 13: dfs_project.HeartbeatResponse.commands:type_name -> dfs_project.Command
+	25, // 14: dfs_project.ReplicationStatus.blocks:type_name -> dfs_project.BlockReplicationInfo
+	26, // 15: dfs_project.GetReplicationInfoResponse.files:type_name -> dfs_project.ReplicationStatus
+	4,  // 16: dfs_project.GetLeaderResponse.leader:type_name -> dfs_project.MetaServerMsg
+	4,  // 17: dfs_project.GetLeaderResponse.followers:type_name -> dfs_project.MetaServerMsg
+	10, // 18: dfs_project.MetaServerService.CreateNode:input_type -> dfs_project.CreateNodeRequest
+	11, // 19: dfs_project.MetaServerService.GetNodeInfo:input_type -> dfs_project.GetNodeInfoRequest
+	13, // 20: dfs_project.MetaServerService.ListDirectory:input_type -> dfs_project.ListDirectoryRequest
+	15, // 21: dfs_project.MetaServerService.DeleteNode:input_type -> dfs_project.DeleteNodeRequest
+	16, // 22: dfs_project.MetaServerService.GetBlockLocations:input_type -> dfs_project.GetBlockLocationsRequest
+	18, // 23: dfs_project.MetaServerService.FinalizeWrite:input_type -> dfs_project.FinalizeWriteRequest
+	19, // 24: dfs_project.MetaServerService.GetClusterInfo:input_type -> dfs_project.GetClusterInfoRequest
+	24, // 25: dfs_project.MetaServerService.GetReplicationInfo:input_type -> dfs_project.GetReplicationInfoRequest
+	21, // 26: dfs_project.MetaServerService.Heartbeat:input_type -> dfs_project.HeartbeatRequest
+	30, // 27: dfs_project.MetaServerService.SyncWAL:input_type -> dfs_project.LogEntry
+	28, // 28: dfs_project.MetaServerService.GetLeader:input_type -> dfs_project.GetLeaderRequest
+	9,  // 29: dfs_project.MetaServerService.CreateNode:output_type -> dfs_project.SimpleResponse
+	12, // 30: dfs_project.MetaServerService.GetNodeInfo:output_type -> dfs_project.GetNodeInfoResponse
+	14, // 31: dfs_project.MetaServerService.ListDirectory:output_type -> dfs_project.ListDirectoryResponse
+	9,  // 32: dfs_project.MetaServerService.DeleteNode:output_type -> dfs_project.SimpleResponse
+	17, // 33: dfs_project.MetaServerService.GetBlockLocations:output_type -> dfs_project.GetBlockLocationsResponse
+	9,  // 34: dfs_project.MetaServerService.FinalizeWrite:output_type -> dfs_project.SimpleResponse
+	20, // 35: dfs_project.MetaServerService.GetClusterInfo:output_type -> dfs_project.GetClusterInfoResponse
+	27, // 36: dfs_project.MetaServerService.GetReplicationInfo:output_type -> dfs_project.GetReplicationInfoResponse
+	23, // 37: dfs_project.MetaServerService.Heartbeat:output_type -> dfs_project.HeartbeatResponse
+	9,  // 38: dfs_project.MetaServerService.SyncWAL:output_type -> dfs_project.SimpleResponse
+	29, // 39: dfs_project.MetaServerService.GetLeader:output_type -> dfs_project.GetLeaderResponse
+	29, // [29:40] is the sub-list for method output_type
+	18, // [18:29] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_metaserver_proto_init() }
@@ -1629,7 +2038,7 @@ func file_metaserver_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_metaserver_proto_rawDesc), len(file_metaserver_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   23,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
