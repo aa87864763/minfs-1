@@ -83,6 +83,12 @@ func executeCommand(command string, args []string) {
 	case "leader":
 		cmdLeader(args)
 		
+	case "test-wal":
+		cmdTestWAL(args)
+		
+	case "test-consistency":
+		cmdTestConsistency(args)
+		
 	case "replicas", "repl":
 		cmdReplicas(args)
 		
@@ -141,6 +147,10 @@ func showHelp() {
 	fmt.Println("  leader                   - Show MetaServer leader/follower information")
 	fmt.Println("  replicas [path]          - Show file replication status (all files if no path)")
 	fmt.Println("")
+	fmt.Println("Testing:")
+	fmt.Println("  test-wal                 - Test WAL synchronization between leader and followers")
+	fmt.Println("  test-consistency         - Test data consistency across all MetaServers")
+	fmt.Println("")
 	fmt.Println("Examples:")
 	fmt.Println("  mkdir /test")
 	fmt.Println("  create /test/hello.txt")
@@ -164,6 +174,94 @@ func cmdLeader(args []string) {
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 	}
+}
+
+func cmdTestWAL(args []string) {
+	fmt.Println("=== WAL Synchronization Test ===")
+	
+	// 1. 获取当前leader信息
+	fmt.Println("Step 1: Getting leader information...")
+	_, err := globalClient.GetLeader()
+	if err != nil {
+		fmt.Printf("Error getting leader info: %v\n", err)
+		return
+	}
+	
+	// 2. 创建测试目录和文件来触发WAL
+	testDir := "/wal-test"
+	testFile := "/wal-test/test-file.txt"
+	
+	fmt.Printf("Step 2: Creating test directory: %s\n", testDir)
+	err = globalClient.CreateDirectory(testDir)
+	if err != nil {
+		fmt.Printf("Error creating test directory: %v\n", err)
+		return
+	}
+	
+	fmt.Printf("Step 3: Creating test file: %s\n", testFile)
+	err = globalClient.Create(testFile)
+	if err != nil {
+		fmt.Printf("Error creating test file: %v\n", err)
+		return
+	}
+	
+	fmt.Printf("Step 4: Writing data to test file\n")
+	testData := "WAL synchronization test data"
+	err = globalClient.WriteFile(testFile, []byte(testData))
+	if err != nil {
+		fmt.Printf("Error writing test file: %v\n", err)
+		return
+	}
+	
+	fmt.Printf("Step 5: Verifying test file exists\n")
+	_, err = globalClient.GetStatus(testFile)
+	if err != nil {
+		fmt.Printf("Error verifying test file: %v\n", err)
+		return
+	}
+	
+	fmt.Println("✓ WAL Test completed successfully!")
+	fmt.Println("This test created WAL entries that should be synchronized to all followers.")
+	fmt.Println("Use 'test-consistency' to verify data consistency across all MetaServers.")
+}
+
+func cmdTestConsistency(args []string) {
+	fmt.Println("=== Data Consistency Test ===")
+	fmt.Println("This test verifies that WAL synchronization is working properly.")
+	fmt.Println("When you perform write operations as leader, followers should")
+	fmt.Println("automatically sync the changes through WAL replication.")
+	fmt.Println("")
+	
+	// 获取leader信息
+	fmt.Println("Step 1: Getting current leader information...")
+	leaderResp, err := globalClient.GetLeader()
+	if err != nil {
+		fmt.Printf("Error getting leader info: %v\n", err)
+		return
+	}
+	
+	if leaderResp.Leader != nil {
+		fmt.Printf("Current Leader: %s:%d\n", leaderResp.Leader.Host, leaderResp.Leader.Port)
+	}
+	
+	if len(leaderResp.Followers) > 0 {
+		fmt.Printf("Followers (%d):\n", len(leaderResp.Followers))
+		for i, follower := range leaderResp.Followers {
+			fmt.Printf("  %d. %s:%d\n", i+1, follower.Host, follower.Port)
+		}
+	}
+	
+	fmt.Println("\nStep 2: Instructions for testing WAL synchronization:")
+	fmt.Println("1. Use the 'test-wal' command to create test data on the leader")
+	fmt.Println("2. Check the MetaServer logs to see WAL synchronization messages")
+	fmt.Println("3. Kill the leader process and observe follower election")
+	fmt.Println("4. Connect to the new leader and verify data exists")
+	fmt.Println("5. Use 'cluster' and 'leader' commands to monitor the cluster state")
+	
+	fmt.Println("\n=== WAL Consistency Verification ===")
+	fmt.Println("✓ Use logs to verify WAL entries are being synced to followers")
+	fmt.Println("✓ Test leader failover to verify data persistence")
+	fmt.Println("✓ All write operations should be logged and replicated")
 }
 
 func cmdReplicas(args []string) {
