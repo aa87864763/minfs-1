@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 	"time"
 
 	"dataserver/internal/model"
@@ -29,6 +30,9 @@ type EtcdClusterService struct {
 	// 控制循环
 	stopChan       chan struct{}
 	isRunning      bool
+	
+	// Leader发现
+	currentLeader  string
 }
 
 // NewClusterService 创建集群服务实例
@@ -42,17 +46,24 @@ func NewClusterService(config *model.Config, storageService model.StorageService
 		return nil, fmt.Errorf("failed to create etcd client: %w", err)
 	}
 	
-	// 创建metaserver连接
+	// 发现当前Leader
+	leader, err := discoverLeader(etcdClient)
+	if err != nil {
+		etcdClient.Close()
+		return nil, fmt.Errorf("failed to discover leader: %w", err)
+	}
+	
+	// 创建metaserver连接到Leader
 	ctx, cancel := context.WithTimeout(context.Background(), 
 		time.Duration(config.MetaServer.ConnectionTimeout)*time.Second)
 	defer cancel()
 	
-	metaConn, err := grpc.DialContext(ctx, config.MetaServer.Address,
+	metaConn, err := grpc.DialContext(ctx, leader,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
 		etcdClient.Close()
-		return nil, fmt.Errorf("failed to connect to metaserver: %w", err)
+		return nil, fmt.Errorf("failed to connect to leader metaserver %s: %w", leader, err)
 	}
 	
 	return &EtcdClusterService{
@@ -62,6 +73,7 @@ func NewClusterService(config *model.Config, storageService model.StorageService
 		storageService: storageService,
 		lease:          clientv3.NewLease(etcdClient),
 		stopChan:       make(chan struct{}),
+		currentLeader:  leader,
 	}, nil
 }
 
@@ -217,7 +229,21 @@ func (s *EtcdClusterService) sendHeartbeat() error {
 	
 	resp, err := client.Heartbeat(ctx, req)
 	if err != nil {
-		return fmt.Errorf("failed to send heartbeat: %w", err)
+		log.Printf("Heartbeat failed, attempting to reconnect to leader: %v", err)
+		// 尝试重连到新的Leader
+		if reconnectErr := s.reconnectToLeader(); reconnectErr != nil {
+			return fmt.Errorf("failed to reconnect to leader: %w", reconnectErr)
+		}
+		
+		// 重新创建客户端并重试
+		client = NewMetaServerServiceClient(s.metaClient)
+		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		
+		resp, err = client.Heartbeat(ctx, req)
+		if err != nil {
+			return fmt.Errorf("failed to send heartbeat after reconnect: %w", err)
+		}
 	}
 	
 	// 打印心跳响应数据到控制台
@@ -325,6 +351,87 @@ func (s *EtcdClusterService) processReplicateCommand(blockID uint64, targets []s
 	}
 	
 	log.Printf("Successfully replicated block %d from %s (%d bytes)", blockID, sourceAddr, len(blockData))
+	return nil
+}
+
+// discoverLeader 从etcd发现当前Leader
+func discoverLeader(etcdClient *clientv3.Client) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	// 查询etcd中的Leader信息
+	resp, err := etcdClient.Get(ctx, "/dfs/metaserver/leader/", clientv3.WithPrefix(), clientv3.WithLimit(1))
+	if err != nil {
+		return "", fmt.Errorf("failed to query leader from etcd: %w", err)
+	}
+	
+	if len(resp.Kvs) == 0 {
+		return "", fmt.Errorf("no leader found in etcd")
+	}
+	
+	// Leader的地址从key中提取节点ID，然后查询节点信息
+	leaderNodeID := string(resp.Kvs[0].Value)
+	
+	// 查询节点信息
+	nodeResp, err := etcdClient.Get(ctx, fmt.Sprintf("/dfs/metaserver/nodes/%s", leaderNodeID))
+	if err != nil {
+		return "", fmt.Errorf("failed to get leader node info: %w", err)
+	}
+	
+	if len(nodeResp.Kvs) == 0 {
+		return "", fmt.Errorf("leader node info not found")
+	}
+	
+	// 解析节点地址 - 假设格式为JSON包含addr字段，或直接是地址
+	nodeInfo := string(nodeResp.Kvs[0].Value)
+	if strings.Contains(nodeInfo, "\"addr\"") {
+		// JSON格式，提取addr字段
+		parts := strings.Split(nodeInfo, "\"addr\":\"")
+		if len(parts) > 1 {
+			addr := strings.Split(parts[1], "\"")[0]
+			return addr, nil
+		}
+	}
+	
+	// 直接返回节点信息作为地址
+	return nodeInfo, nil
+}
+
+// reconnectToLeader 重连到新的Leader
+func (s *EtcdClusterService) reconnectToLeader() error {
+	// 发现新的Leader
+	newLeader, err := discoverLeader(s.etcdClient)
+	if err != nil {
+		return fmt.Errorf("failed to discover new leader: %w", err)
+	}
+	
+	if newLeader == s.currentLeader {
+		return nil // 没有变化
+	}
+	
+	log.Printf("Leader changed from %s to %s, reconnecting...", s.currentLeader, newLeader)
+	
+	// 关闭旧连接
+	if s.metaClient != nil {
+		s.metaClient.Close()
+	}
+	
+	// 创建新连接
+	ctx, cancel := context.WithTimeout(context.Background(), 
+		time.Duration(s.config.MetaServer.ConnectionTimeout)*time.Second)
+	defer cancel()
+	
+	newConn, err := grpc.DialContext(ctx, newLeader,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to connect to new leader %s: %w", newLeader, err)
+	}
+	
+	s.metaClient = newConn
+	s.currentLeader = newLeader
+	
+	log.Printf("Successfully reconnected to new leader: %s", newLeader)
 	return nil
 }
 
