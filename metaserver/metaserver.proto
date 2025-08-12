@@ -239,7 +239,47 @@ message GetLeaderResponse {
     repeated MetaServerMsg followers = 2;
 }
 
-// SyncWAL (用于主从同步)
+// WAL操作类型枚举
+enum WALOperationType {
+    CREATE_NODE = 0;    // 创建文件或目录
+    DELETE_NODE = 1;    // 删除文件或目录
+    UPDATE_NODE = 2;    // 更新节点信息
+    FINALIZE_WRITE = 3; // 完成写入操作
+}
+
+// WAL日志条目 (用于主从同步)
 message LogEntry {
-    bytes data = 1;
+    uint64 log_index = 1;              // 日志序号
+    int64 timestamp = 2;               // 时间戳
+    WALOperationType operation = 3;     // 操作类型
+    bytes data = 4;                    // 操作数据（JSON格式）
+    string checksum = 5;               // 数据校验和
+}
+
+// 创建节点操作的数据
+message CreateNodeOperation {
+    string path = 1;
+    FileType type = 2;
+}
+
+// 删除节点操作的数据
+message DeleteNodeOperation {
+    string path = 1;
+    bool recursive = 2;
+}
+
+// 更新节点操作的数据
+message UpdateNodeOperation {
+    string path = 1;
+    int64 size = 2;
+    int64 mtime = 3;
+}
+
+// 完成写入操作的数据
+message FinalizeWriteOperation {
+    string path = 1;
+    repeated BlockLocations block_locations = 2;
+    uint64 inode = 3;
+    int64 size = 4;
+    string md5 = 5;
 }
