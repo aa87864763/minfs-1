@@ -25,8 +25,7 @@ etcd:
 
 # MetaServer connection
 metaserver:
-  # Address of the metaserver
-  address: "localhost:8000"
+  # Address removed - now uses etcd leader discovery
   # Heartbeat interval in seconds
   heartbeat_interval: 10
   # Connection timeout in seconds
