@@ -16,6 +16,7 @@ type MetaServerHandler struct {
 	metadataService *service.MetadataService
 	clusterService  *service.ClusterService
 	schedulerService *service.SchedulerService
+	walService      *service.WALService
 }
 
 func NewMetaServerHandler(
@@ -27,6 +28,49 @@ func NewMetaServerHandler(
 		metadataService:  metadataService,
 		clusterService:   clusterService,
 		schedulerService: schedulerService,
+		walService:       nil, // 将在main.go中设置
+	}
+}
+
+// SetWALService 设置WAL服务
+func (h *MetaServerHandler) SetWALService(walService *service.WALService) {
+	h.walService = walService
+}
+
+// getWALService 获取WAL服务
+func (h *MetaServerHandler) getWALService() *service.WALService {
+	return h.walService
+}
+
+// isLeader 检查当前节点是否为leader
+func (h *MetaServerHandler) isLeader() bool {
+	if h.clusterService == nil {
+		return false
+	}
+	return h.clusterService.IsLeader()
+}
+
+// createWALEntry 创建WAL条目
+func (h *MetaServerHandler) createWALEntry(operation pb.WALOperationType, data interface{}) (*pb.LogEntry, error) {
+	walService := h.getWALService()
+	if walService == nil {
+		// 如果没有WAL服务，跳过WAL记录
+		return nil, nil
+	}
+	
+	return walService.AppendLogEntry(operation, data)
+}
+
+// syncWALToFollowers 同步WAL到followers
+func (h *MetaServerHandler) syncWALToFollowers(entry *pb.LogEntry) {
+	walService := h.getWALService()
+	if walService == nil {
+		return
+	}
+	
+	err := walService.SyncToFollowers(entry)
+	if err != nil {
+		log.Printf("Failed to sync WAL entry %d to followers: %v", entry.LogIndex, err)
 	}
 }
 
@@ -43,10 +87,31 @@ func (h *MetaServerHandler) CreateNode(ctx context.Context, req *pb.CreateNodeRe
 		path = "/"
 	}
 	
-	err := h.metadataService.CreateNode(path, req.Type)
+	// 检查是否为leader，只有leader才能处理写操作
+	if !h.isLeader() {
+		return &pb.SimpleResponse{Success: false}, fmt.Errorf("only leader can handle write operations")
+	}
+	
+	// 1. 创建WAL日志条目
+	walEntry, err := h.createWALEntry(pb.WALOperationType_CREATE_NODE, &pb.CreateNodeOperation{
+		Path: path,
+		Type: req.Type,
+	})
+	if err != nil {
+		log.Printf("CreateNode: Failed to create WAL entry: %v", err)
+		return &pb.SimpleResponse{Success: false}, err
+	}
+	
+	// 2. 执行实际的元数据操作
+	err = h.metadataService.CreateNode(path, req.Type)
 	if err != nil {
 		log.Printf("CreateNode error: %v", err)
 		return &pb.SimpleResponse{Success: false}, err
+	}
+	
+	// 3. 同步WAL到followers
+	if walEntry != nil {
+		go h.syncWALToFollowers(walEntry)
 	}
 	
 	log.Printf("CreateNode success: %s", path)
@@ -216,7 +281,47 @@ func (h *MetaServerHandler) FinalizeWrite(ctx context.Context, req *pb.FinalizeW
 		return &pb.SimpleResponse{Success: false}, fmt.Errorf("invalid inode ID")
 	}
 	
-	err := h.metadataService.FinalizeWrite(req.Path, req.Inode, uint64(req.Size), req.Md5)
+	// 只有leader才能执行写操作
+	if !h.isLeader() {
+		return &pb.SimpleResponse{Success: false}, fmt.Errorf("not leader, cannot execute FinalizeWrite")
+	}
+	
+	// 获取块映射信息用于WAL记录
+	blockMappings, err := h.metadataService.GetBlockMappings(req.Inode)
+	if err != nil {
+		log.Printf("FinalizeWrite error getting block mappings: %v", err)
+		return &pb.SimpleResponse{Success: false}, err
+	}
+	
+	// 记录到WAL
+	walService := h.getWALService()
+	if walService != nil {
+		// 构建FinalizeWrite操作数据
+		finalizeWriteOp := pb.FinalizeWriteOperation{
+			Path:           req.Path,
+			Inode:          req.Inode,
+			Size:           req.Size,
+			Md5:           req.Md5,
+			BlockLocations: blockMappings,
+		}
+		
+		// 添加WAL条目
+		entry, err := walService.AppendLogEntry(pb.WALOperationType_FINALIZE_WRITE, finalizeWriteOp)
+		if err != nil {
+			log.Printf("FinalizeWrite failed to append WAL entry: %v", err)
+			return &pb.SimpleResponse{Success: false}, err
+		}
+		
+		// 同步到followers
+		err = walService.SyncToFollowers(entry)
+		if err != nil {
+			log.Printf("FinalizeWrite failed to sync to followers: %v", err)
+			// 注意：这里不返回错误，因为本地操作已成功，只是同步失败
+		}
+	}
+	
+	// 执行本地FinalizeWrite操作
+	err = h.metadataService.FinalizeWrite(req.Path, req.Inode, uint64(req.Size), req.Md5)
 	if err != nil {
 		log.Printf("FinalizeWrite error: %v", err)
 		return &pb.SimpleResponse{Success: false}, err
@@ -452,9 +557,56 @@ func (h *MetaServerHandler) getAllFileNodes() ([]*pb.NodeInfo, error) {
 	return files, nil
 }
 
-// SyncWAL 同步 WAL（用于主从复制，暂未实现）
+// SyncWAL 同步 WAL（用于主从复制）
 func (h *MetaServerHandler) SyncWAL(stream pb.MetaServerService_SyncWALServer) error {
-	return fmt.Errorf("SyncWAL not implemented yet")
+	log.Printf("SyncWAL stream started")
+	
+	var processedCount int
+	
+	for {
+		entry, err := stream.Recv()
+		if err != nil {
+			if err.Error() == "EOF" {
+				log.Printf("SyncWAL stream ended, processed %d entries", processedCount)
+				return stream.SendAndClose(&pb.SimpleResponse{
+					Success: true,
+					Message: fmt.Sprintf("Processed %d WAL entries", processedCount),
+				})
+			}
+			log.Printf("SyncWAL stream error: %v", err)
+			return err
+		}
+		
+		// 检查是否有WAL服务
+		walService := h.getWALService()
+		if walService == nil {
+			log.Printf("WAL service not available, skipping entry %d", entry.LogIndex)
+			continue
+		}
+		
+		// 回放这个日志条目
+		err = walService.ReplayLogEntry(entry, h.metadataService)
+		if err != nil {
+			log.Printf("Failed to replay WAL entry %d: %v", entry.LogIndex, err)
+			return stream.SendAndClose(&pb.SimpleResponse{
+				Success: false,
+				Message: fmt.Sprintf("Failed to replay entry %d: %v", entry.LogIndex, err),
+			})
+		}
+		
+		// 将日志条目写入本地WAL（作为follower）
+		err = walService.WriteLogEntry(entry)
+		if err != nil {
+			log.Printf("Failed to write WAL entry %d locally: %v", entry.LogIndex, err)
+			return stream.SendAndClose(&pb.SimpleResponse{
+				Success: false,
+				Message: fmt.Sprintf("Failed to write entry %d locally: %v", entry.LogIndex, err),
+			})
+		}
+		
+		processedCount++
+		log.Printf("SyncWAL: Processed entry %d, operation: %v", entry.LogIndex, entry.Operation)
+	}
 }
 
 // GetLeader 获取主从信息 (HA 支持)

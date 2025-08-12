@@ -66,6 +66,14 @@ func (cs *ClusterService) SetLeaderElection(le *LeaderElection) {
 	cs.leaderElection = le
 }
 
+// IsLeader 检查当前节点是否为leader
+func (cs *ClusterService) IsLeader() bool {
+	if cs.leaderElection == nil {
+		return false
+	}
+	return cs.leaderElection.IsLeader()
+}
+
 // startHealthCheck 启动健康检查goroutine
 func (cs *ClusterService) startHealthCheck() {
 	cs.healthCheckTicker = time.NewTicker(cs.config.Cluster.HeartbeatTimeout / 2)

@@ -90,9 +90,21 @@ func main() {
 	clusterService := service.NewClusterService(config)
 	clusterService.SetLeaderElection(leaderElection) // 传递选举服务
 	schedulerService := service.NewSchedulerService(config, clusterService, metadataService)
+	
+	// 初始化 WAL 服务
+	walService := service.NewWALService(db, config, currentNodeID)
+	
+	// 设置Leader Election和WAL服务的相互引用
+	leaderElection.SetWALService(walService)
+	
+	// 回放WAL日志以恢复状态
+	if err := replayWALLogs(walService, metadataService); err != nil {
+		log.Printf("Warning: Failed to replay WAL logs: %v", err)
+	}
 
 	// 初始化 gRPC Handler
 	metaHandler := handler.NewMetaServerHandler(metadataService, clusterService, schedulerService)
+	metaHandler.SetWALService(walService) // 设置WAL服务
 
 	// 启动 gRPC 服务器
 	grpcServer := grpc.NewServer()
@@ -131,8 +143,42 @@ func main() {
 	schedulerService.Stop()
 	clusterService.Stop()
 	leaderElection.Stop()
+	walService.Close()
 
 	log.Println("MetaServer shutdown complete")
+}
+
+// replayWALLogs 回放WAL日志
+func replayWALLogs(walService *service.WALService, metadataService *service.MetadataService) error {
+	log.Println("Starting WAL replay...")
+	
+	// 获取当前最大日志索引
+	currentIndex := walService.GetCurrentLogIndex()
+	if currentIndex == 0 {
+		log.Println("No WAL entries to replay")
+		return nil
+	}
+	
+	// 从索引1开始回放所有日志
+	entries, err := walService.GetLogEntriesFrom(1, int(currentIndex))
+	if err != nil {
+		return fmt.Errorf("failed to get WAL entries: %v", err)
+	}
+	
+	replayedCount := 0
+	for _, entry := range entries {
+		err := walService.ReplayLogEntry(entry, metadataService)
+		if err != nil {
+			log.Printf("Failed to replay WAL entry %d: %v", entry.LogIndex, err)
+			// 继续回放其他条目，不要因为一个失败就停止
+			continue
+		}
+		replayedCount++
+	}
+	
+	log.Printf("WAL replay completed: %d/%d entries replayed successfully", 
+		replayedCount, len(entries))
+	return nil
 }
 
 // initBadgerDB 初始化 BadgerDB
