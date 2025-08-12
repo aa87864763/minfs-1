@@ -29,7 +29,7 @@ type Config struct {
 	} `yaml:"etcd"`
 	
 	MetaServer struct {
-		Address           string `yaml:"address"`
+		// Address removed - now uses etcd leader discovery
 		HeartbeatInterval int    `yaml:"heartbeat_interval"`
 		ConnectionTimeout int    `yaml:"connection_timeout"`
 	} `yaml:"metaserver"`
