@@ -9,6 +9,17 @@ bin/
 *.txt
 *.dat
 *.json
+*.pid
+*.vlog
+*.sst
+*.mem
+*.tmp
+
+/metaserver/metadb
+/metaserver/metadb1
+/metaserver/metadb2
+/metaserver/metadb3
+/etcd-data
 
 # Test binary, built with `go test -c`
 *.test
