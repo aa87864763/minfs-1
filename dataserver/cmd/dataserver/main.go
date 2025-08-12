@@ -22,6 +22,8 @@ import (
 var (
 	configPath = flag.String("config", "config.yaml", "Path to configuration file")
 	mockMode   = flag.Bool("mock", false, "Run in mock mode without etcd dependency")
+	port       = flag.String("port", "8001", "Port number for this DataServer instance")
+	instanceID = flag.String("id", "01", "Instance ID (01, 02, 03, 04)")
 )
 
 func main() {
@@ -32,6 +34,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
+	
+	// 根据命令行参数覆盖配置
+	config.Server.ListenAddress = fmt.Sprintf("0.0.0.0:%s", *port)
+	config.Server.DataserverId = fmt.Sprintf("dataserver-%s", *instanceID)
+	config.Storage.DataRootPath = fmt.Sprintf("./data%s", *instanceID)
 	
 	log.Printf("Starting DataServer %s (Mock Mode: %v)", config.Server.DataserverId, *mockMode)
 	log.Printf("Listening on %s", config.Server.ListenAddress)
@@ -152,9 +159,7 @@ func validateConfig(config *model.Config) error {
 		return fmt.Errorf("etcd.endpoints is required")
 	}
 	
-	if config.MetaServer.Address == "" {
-		return fmt.Errorf("metaserver.address is required")
-	}
+	// MetaServer address is now discovered via etcd, not required in config
 	
 	// 设置默认值
 	if config.Etcd.DialTimeout == 0 {
@@ -216,6 +221,6 @@ func printStartupBanner(config *model.Config) {
 	log.Printf("Listen Address: %s", config.Server.ListenAddress)
 	log.Printf("Data Root Path: %s", config.Storage.DataRootPath)
 	log.Printf("Etcd Endpoints: %v", config.Etcd.Endpoints)
-	log.Printf("MetaServer Address: %s", config.MetaServer.Address)
+	log.Printf("MetaServer Discovery: via etcd leader election")
 	fmt.Println()
 }
