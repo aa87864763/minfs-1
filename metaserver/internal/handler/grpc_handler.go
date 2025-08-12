@@ -459,14 +459,20 @@ func (h *MetaServerHandler) SyncWAL(stream pb.MetaServerService_SyncWALServer) e
 
 // GetLeader 获取主从信息 (HA 支持)
 func (h *MetaServerHandler) GetLeader(ctx context.Context, req *pb.GetLeaderRequest) (*pb.GetLeaderResponse, error) {
-	// TODO: 实现真正的 HA 功能
-	return &pb.GetLeaderResponse{
-		Leader: &pb.MetaServerMsg{
-			Host: "localhost",
-			Port: 8080,
-		},
-		Followers: []*pb.MetaServerMsg{},
-	}, nil
+	log.Printf("GetLeader request")
+	
+	// 通过clusterService获取选举信息
+	clusterInfo := h.clusterService.GetClusterInfo()
+	
+	response := &pb.GetLeaderResponse{
+		Leader:    clusterInfo.MasterMetaServer,
+		Followers: clusterInfo.SlaveMetaServer,
+	}
+	
+	log.Printf("GetLeader response: Leader=%s:%d, Followers=%d", 
+		response.Leader.Host, response.Leader.Port, len(response.Followers))
+	
+	return response, nil
 }
 
 // nodeInfoToStatInfo 将内部 NodeInfo 转换为 easyClient 需要的 StatInfo 格式

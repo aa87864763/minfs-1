@@ -15,15 +15,19 @@ var globalClient *client.MinifsClient
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: ../bin/client <metaserver_address>")
+		fmt.Println("Usage: ../bin/client <metaserver_addresses>")
 		fmt.Println("Example: ../bin/client localhost:9090")
+		fmt.Println("Example: ../bin/client localhost:9090,localhost:9091,localhost:9092")
 		os.Exit(1)
 	}
 
-	metaServerAddr := os.Args[1]
+	metaServerAddrs := strings.Split(os.Args[1], ",")
+	
+	// 调试信息：显示解析后的地址
+	fmt.Printf("Parsed MetaServer addresses: %v\n", metaServerAddrs)
 	
 	// 创建client实例
-	c, err := client.NewMinifsClient(metaServerAddr)
+	c, err := client.NewMinifsClient(metaServerAddrs)
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)
 	}
@@ -31,7 +35,7 @@ func main() {
 
 	globalClient = c
 
-	fmt.Printf("=== MiniFS Client Connected to %s ===\n", metaServerAddr)
+	fmt.Printf("=== MiniFS Client Connected (MetaServers: %s) ===\n", strings.Join(metaServerAddrs, ", "))
 	fmt.Println("Type 'help' for available commands")
 	
 	// 启动命令行界面
@@ -75,6 +79,9 @@ func executeCommand(command string, args []string) {
 		
 	case "cluster":
 		cmdCluster(args)
+		
+	case "leader":
+		cmdLeader(args)
 		
 	case "replicas", "repl":
 		cmdReplicas(args)
@@ -131,6 +138,7 @@ func showHelp() {
 	fmt.Println("")
 	fmt.Println("Cluster:")
 	fmt.Println("  cluster                  - Show cluster information")
+	fmt.Println("  leader                   - Show MetaServer leader/follower information")
 	fmt.Println("  replicas [path]          - Show file replication status (all files if no path)")
 	fmt.Println("")
 	fmt.Println("Examples:")
@@ -146,6 +154,13 @@ func showHelp() {
 
 func cmdCluster(args []string) {
 	_, err := globalClient.GetClusterInfo()
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+	}
+}
+
+func cmdLeader(args []string) {
+	_, err := globalClient.GetLeader()
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 	}

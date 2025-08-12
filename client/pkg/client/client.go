@@ -13,46 +13,155 @@ import (
 )
 
 type MinifsClient struct {
-	metaClient pb.MetaServerServiceClient
-	metaConn   *grpc.ClientConn
+	metaservers    []string // 所有metaserver地址列表
+	currentLeader  string   // 当前leader地址
+	metaClient     pb.MetaServerServiceClient
+	metaConn       *grpc.ClientConn
 }
 
-func NewMinifsClient(metaServerAddr string) (*MinifsClient, error) {
-	conn, err := grpc.Dial(metaServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to metaserver: %v", err)
+func NewMinifsClient(metaServerAddrs []string) (*MinifsClient, error) {
+	if len(metaServerAddrs) == 0 {
+		return nil, fmt.Errorf("no metaserver addresses provided")
 	}
 
 	client := &MinifsClient{
-		metaClient: pb.NewMetaServerServiceClient(conn),
-		metaConn:   conn,
+		metaservers: metaServerAddrs,
 	}
 
+	// 发现并连接到leader
+	if err := client.discoverAndConnectLeader(); err != nil {
+		return nil, fmt.Errorf("failed to discover and connect to leader: %v", err)
+	}
+
+	fmt.Printf("Connected to leader: %s\n", client.currentLeader)
 	return client, nil
 }
 
+// discoverAndConnectLeader 发现并连接到leader
+func (c *MinifsClient) discoverAndConnectLeader() error {
+	// 尝试每个metaserver地址，找到leader
+	for _, addr := range c.metaservers {
+		fmt.Printf("Trying to connect to %s...\n", addr)
+		
+		// 连接到这个metaserver
+		conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			fmt.Printf("Failed to connect to %s: %v\n", addr, err)
+			continue
+		}
+
+		tempClient := pb.NewMetaServerServiceClient(conn)
+		
+		// 获取leader信息
+		resp, err := tempClient.GetLeader(context.Background(), &pb.GetLeaderRequest{})
+		if err != nil {
+			fmt.Printf("Failed to get leader from %s: %v\n", addr, err)
+			conn.Close()
+			continue
+		}
+
+		// 检查这个节点是否是leader
+		leaderAddr := fmt.Sprintf("%s:%d", resp.Leader.Host, resp.Leader.Port)
+		
+		if leaderAddr == addr {
+			// 这个节点就是leader，直接使用
+			c.currentLeader = addr
+			c.metaClient = tempClient
+			c.metaConn = conn
+			return nil
+		} else {
+			// 这个节点不是leader，关闭连接，尝试连接到真正的leader
+			conn.Close()
+			
+			// 尝试连接到真正的leader
+			leaderConn, err := grpc.Dial(leaderAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				fmt.Printf("Failed to connect to leader %s: %v\n", leaderAddr, err)
+				continue
+			}
+			
+			// 验证这确实是leader
+			leaderClient := pb.NewMetaServerServiceClient(leaderConn)
+			leaderResp, err := leaderClient.GetLeader(context.Background(), &pb.GetLeaderRequest{})
+			if err != nil {
+				fmt.Printf("Failed to verify leader %s: %v\n", leaderAddr, err)
+				leaderConn.Close()
+				continue
+			}
+			
+			verifyAddr := fmt.Sprintf("%s:%d", leaderResp.Leader.Host, leaderResp.Leader.Port)
+			if verifyAddr == leaderAddr {
+				// 确认这是leader
+				c.currentLeader = leaderAddr
+				c.metaClient = leaderClient
+				c.metaConn = leaderConn
+				return nil
+			} else {
+				leaderConn.Close()
+				continue
+			}
+		}
+	}
+
+	return fmt.Errorf("failed to find and connect to any leader")
+}
+
+// reconnectToLeader 重新连接到leader（在连接失败时调用）
+func (c *MinifsClient) reconnectToLeader() error {
+	fmt.Printf("Connection to leader %s failed, trying to reconnect...\n", c.currentLeader)
+	
+	// 关闭当前连接
+	if c.metaConn != nil {
+		c.metaConn.Close()
+	}
+	
+	// 重新发现leader
+	return c.discoverAndConnectLeader()
+}
+
+// executeWithRetry 执行gRPC调用，如果失败则重试
+func (c *MinifsClient) executeWithRetry(operation func() error) error {
+	err := operation()
+	if err != nil {
+		// 如果调用失败，尝试重新连接到leader
+		if reconnectErr := c.reconnectToLeader(); reconnectErr != nil {
+			return fmt.Errorf("operation failed and reconnect failed: %v (original error: %v)", reconnectErr, err)
+		}
+		
+		// 重新连接成功，重试操作
+		fmt.Printf("Reconnected to new leader: %s, retrying operation...\n", c.currentLeader)
+		err = operation()
+	}
+	return err
+}
+
 func (c *MinifsClient) Close() error {
-	return c.metaConn.Close()
+	if c.metaConn != nil {
+		return c.metaConn.Close()
+	}
+	return nil
 }
 
 // A1: 文件创建
 func (c *MinifsClient) Create(path string) error {
-	req := &pb.CreateNodeRequest{
-		Path: path,
-		Type: pb.FileType_File,
-	}
+	return c.executeWithRetry(func() error {
+		req := &pb.CreateNodeRequest{
+			Path: path,
+			Type: pb.FileType_File,
+		}
 
-	resp, err := c.metaClient.CreateNode(context.Background(), req)
-	if err != nil {
-		return fmt.Errorf("failed to create file %s: %v", path, err)
-	}
+		resp, err := c.metaClient.CreateNode(context.Background(), req)
+		if err != nil {
+			return fmt.Errorf("failed to create file %s: %v", path, err)
+		}
 
-	if !resp.Success {
-		return fmt.Errorf("failed to create file %s: server returned failure", path)
-	}
+		if !resp.Success {
+			return fmt.Errorf("failed to create file %s: server returned failure", path)
+		}
 
-	fmt.Printf("Successfully created file: %s\n", path)
-	return nil
+		fmt.Printf("Successfully created file: %s\n", path)
+		return nil
+	})
 }
 
 // A1: 目录创建
@@ -373,35 +482,87 @@ func (c *MinifsClient) Open(path string) error {
 
 // A5: 获取集群信息
 func (c *MinifsClient) GetClusterInfo() (*pb.GetClusterInfoResponse, error) {
-	req := &pb.GetClusterInfoRequest{}
+	var result *pb.GetClusterInfoResponse
+	err := c.executeWithRetry(func() error {
+		req := &pb.GetClusterInfoRequest{}
 
-	resp, err := c.metaClient.GetClusterInfo(context.Background(), req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get cluster info: %v", err)
-	}
-
-	fmt.Printf("Cluster Information:\n")
-	
-	// 显示 MetaServer 信息
-	if resp.ClusterInfo.MasterMetaServer != nil {
-		fmt.Printf("Master MetaServer: %s:%d\n", 
-			resp.ClusterInfo.MasterMetaServer.Host, resp.ClusterInfo.MasterMetaServer.Port)
-	}
-	if len(resp.ClusterInfo.SlaveMetaServer) > 0 {
-		fmt.Printf("Slave MetaServers (%d):\n", len(resp.ClusterInfo.SlaveMetaServer))
-		for _, slave := range resp.ClusterInfo.SlaveMetaServer {
-			fmt.Printf("  %s:%d\n", slave.Host, slave.Port)
+		resp, err := c.metaClient.GetClusterInfo(context.Background(), req)
+		if err != nil {
+			return fmt.Errorf("failed to get cluster info: %v", err)
 		}
-	}
-	
-	// 显示 DataServer 信息
-	fmt.Printf("DataServers (%d):\n", len(resp.ClusterInfo.DataServer))
-	for _, ds := range resp.ClusterInfo.DataServer {
-		fmt.Printf("  %s:%d - Files: %d, Capacity: %d MB, Used: %d MB\n",
-			ds.Host, ds.Port, ds.FileTotal, ds.Capacity, ds.UseCapacity)
-	}
 
-	return resp, nil
+		result = resp
+
+		fmt.Printf("Cluster Information:\n")
+		
+		// 显示当前连接信息
+		fmt.Printf("Connected to Leader: %s\n", c.currentLeader)
+		fmt.Printf("\n")
+		
+		// 显示 MetaServer 信息
+		if resp.ClusterInfo.MasterMetaServer != nil {
+			fmt.Printf("Master MetaServer: %s:%d\n", 
+				resp.ClusterInfo.MasterMetaServer.Host, resp.ClusterInfo.MasterMetaServer.Port)
+		}
+		if len(resp.ClusterInfo.SlaveMetaServer) > 0 {
+			fmt.Printf("Slave MetaServers (%d):\n", len(resp.ClusterInfo.SlaveMetaServer))
+			for _, slave := range resp.ClusterInfo.SlaveMetaServer {
+				fmt.Printf("  %s:%d\n", slave.Host, slave.Port)
+			}
+		}
+		
+		// 显示 DataServer 信息
+		fmt.Printf("DataServers (%d):\n", len(resp.ClusterInfo.DataServer))
+		for _, ds := range resp.ClusterInfo.DataServer {
+			fmt.Printf("  %s:%d - Files: %d, Capacity: %d MB, Used: %d MB\n",
+				ds.Host, ds.Port, ds.FileTotal, ds.Capacity, ds.UseCapacity)
+		}
+
+		return nil
+	})
+	
+	return result, err
+}
+
+// GetLeader 获取MetaServer主从信息
+func (c *MinifsClient) GetLeader() (*pb.GetLeaderResponse, error) {
+	var result *pb.GetLeaderResponse
+	err := c.executeWithRetry(func() error {
+		req := &pb.GetLeaderRequest{}
+
+		resp, err := c.metaClient.GetLeader(context.Background(), req)
+		if err != nil {
+			return fmt.Errorf("failed to get leader info: %v", err)
+		}
+
+		result = resp
+
+		fmt.Printf("Leader Information:\n")
+		
+		// 显示当前连接信息
+		fmt.Printf("Connected to: %s\n", c.currentLeader)
+		fmt.Printf("\n")
+		
+		// 显示 Leader 信息
+		if resp.Leader != nil {
+			fmt.Printf("Leader MetaServer: %s:%d\n", 
+				resp.Leader.Host, resp.Leader.Port)
+		}
+		
+		// 显示 Followers 信息
+		if len(resp.Followers) > 0 {
+			fmt.Printf("Follower MetaServers (%d):\n", len(resp.Followers))
+			for i, follower := range resp.Followers {
+				fmt.Printf("  %d. %s:%d\n", i+1, follower.Host, follower.Port)
+			}
+		} else {
+			fmt.Printf("No Follower MetaServers found\n")
+		}
+
+		return nil
+	})
+	
+	return result, err
 }
 
 // GetReplicationInfo 获取文件副本分布信息

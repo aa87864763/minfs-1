@@ -28,6 +28,9 @@ type ClusterService struct {
 	
 	// etcd 服务发现
 	etcdService *EtcdService
+	
+	// Leader Election 服务
+	leaderElection *LeaderElection
 }
 
 func NewClusterService(config *model.Config) *ClusterService {
@@ -56,6 +59,11 @@ func NewClusterService(config *model.Config) *ClusterService {
 	cs.startHealthCheck()
 	
 	return cs
+}
+
+// SetLeaderElection 设置Leader Election服务
+func (cs *ClusterService) SetLeaderElection(le *LeaderElection) {
+	cs.leaderElection = le
 }
 
 // startHealthCheck 启动健康检查goroutine
@@ -347,14 +355,27 @@ func (cs *ClusterService) GetClusterInfo() *pb.ClusterInfo {
 		dataServers = append(dataServers, dataServerMsg)
 	}
 	
+	// 获取真实的主从信息
+	var masterMetaServer *pb.MetaServerMsg
+	var slaveMetaServers []*pb.MetaServerMsg
+	
+	if cs.leaderElection != nil {
+		masterMetaServer = cs.leaderElection.GetCurrentLeader()
+		slaveMetaServers = cs.leaderElection.GetFollowers()
+	} else {
+		// 如果没有选举服务，返回默认值
+		masterMetaServer = &pb.MetaServerMsg{
+			Host: "localhost",
+			Port: 8080,
+		}
+		slaveMetaServers = []*pb.MetaServerMsg{}
+	}
+
 	// 构建集群信息
 	clusterInfo := &pb.ClusterInfo{
-		MasterMetaServer: &pb.MetaServerMsg{
-			Host: "localhost", // TODO: 从配置获取
-			Port: 8080,
-		},
-		SlaveMetaServer: []*pb.MetaServerMsg{}, // TODO: 实现从节点支持
-		DataServer:      dataServers,
+		MasterMetaServer: masterMetaServer,
+		SlaveMetaServer:  slaveMetaServers,
+		DataServer:       dataServers,
 	}
 	
 	return clusterInfo

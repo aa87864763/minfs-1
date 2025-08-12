@@ -21,6 +21,8 @@ import (
 var (
 	configPath = flag.String("config", "config.yaml", "Path to configuration file")
 	port       = flag.Int("port", 9090, "gRPC server port")
+	nodeID     = flag.String("node-id", "", "MetaServer node ID (auto-generated if not provided)")
+	dataDir    = flag.String("data-dir", "", "BadgerDB data directory (overrides config)")
 )
 
 func main() {
@@ -38,9 +40,22 @@ func main() {
 	if *port != 9090 {
 		config.Server.GrpcPort = *port
 	}
+	
+	// 如果命令行指定了数据目录，覆盖配置文件
+	if *dataDir != "" {
+		config.Database.BadgerDir = *dataDir
+	}
+	
+	// 生成节点ID
+	var currentNodeID string
+	if *nodeID != "" {
+		currentNodeID = *nodeID
+	} else {
+		currentNodeID = fmt.Sprintf("metaserver-%d", config.Server.GrpcPort)
+	}
 
-	log.Printf("Configuration loaded: gRPC port=%d, BadgerDB dir=%s", 
-		config.Server.GrpcPort, config.Database.BadgerDir)
+	log.Printf("Configuration loaded: NodeID=%s, gRPC port=%d, BadgerDB dir=%s", 
+		currentNodeID, config.Server.GrpcPort, config.Database.BadgerDir)
 
 	// 初始化 BadgerDB
 	db, err := initBadgerDB(config.Database.BadgerDir)
@@ -58,9 +73,22 @@ func main() {
 		log.Fatalf("Failed to initialize root directory: %v", err)
 	}
 
+	// 初始化Leader Election服务
+	nodeAddr := fmt.Sprintf("localhost:%d", config.Server.GrpcPort)
+	leaderElection, err := service.NewLeaderElection(config, currentNodeID, nodeAddr)
+	if err != nil {
+		log.Fatalf("Failed to initialize leader election: %v", err)
+	}
+	
+	// 启动Leader Election
+	if err := leaderElection.Start(); err != nil {
+		log.Fatalf("Failed to start leader election: %v", err)
+	}
+
 	// 初始化服务层
 	metadataService := service.NewMetadataService(db, config)
 	clusterService := service.NewClusterService(config)
+	clusterService.SetLeaderElection(leaderElection) // 传递选举服务
 	schedulerService := service.NewSchedulerService(config, clusterService, metadataService)
 
 	// 初始化 gRPC Handler
@@ -102,6 +130,7 @@ func main() {
 	// 停止后台服务
 	schedulerService.Stop()
 	clusterService.Stop()
+	leaderElection.Stop()
 
 	log.Println("MetaServer shutdown complete")
 }
