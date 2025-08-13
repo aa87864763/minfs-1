@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -31,8 +32,10 @@ type EtcdClusterService struct {
 	stopChan       chan struct{}
 	isRunning      bool
 	
-	// Leader发现
+	// Leader发现和监听
 	currentLeader  string
+	leaderWatcher  clientv3.WatchChan
+	leaderStopChan chan struct{}
 }
 
 // NewClusterService 创建集群服务实例
@@ -66,15 +69,21 @@ func NewClusterService(config *model.Config, storageService model.StorageService
 		return nil, fmt.Errorf("failed to connect to leader metaserver %s: %w", leader, err)
 	}
 	
-	return &EtcdClusterService{
+	service := &EtcdClusterService{
 		config:         config,
 		etcdClient:     etcdClient,
 		metaClient:     metaConn,
 		storageService: storageService,
 		lease:          clientv3.NewLease(etcdClient),
 		stopChan:       make(chan struct{}),
+		leaderStopChan: make(chan struct{}),
 		currentLeader:  leader,
-	}, nil
+	}
+	
+	// 启动Leader监听
+	service.startLeaderWatcher()
+	
+	return service, nil
 }
 
 // RegisterToETCD 在etcd中注册本服务
@@ -135,11 +144,86 @@ func (s *EtcdClusterService) StartHeartbeatLoop() error {
 	return nil
 }
 
+// startLeaderWatcher 启动Leader变化监听
+func (s *EtcdClusterService) startLeaderWatcher() {
+	// 监听Leader变化 - 监听具体的leader key
+	s.leaderWatcher = s.etcdClient.Watch(context.Background(), "/dfs/metaserver/leader/current")
+	
+	go func() {
+		log.Println("Leader watcher started, monitoring /dfs/metaserver/leader/current")
+		
+		for {
+			select {
+			case watchResp := <-s.leaderWatcher:
+				for _, event := range watchResp.Events {
+					log.Printf("Leader change detected: %s on key %s, value: %s", 
+						event.Type, string(event.Kv.Key), string(event.Kv.Value))
+					
+					// 当Leader发生变化时，重新连接
+					if err := s.handleLeaderChange(); err != nil {
+						log.Printf("Failed to handle leader change: %v", err)
+					} else {
+						log.Printf("Successfully handled leader change")
+					}
+				}
+				
+			case <-s.leaderStopChan:
+				log.Println("Leader watcher stopping")
+				return
+			}
+		}
+	}()
+}
+
+// handleLeaderChange 处理Leader变化
+func (s *EtcdClusterService) handleLeaderChange() error {
+	log.Println("Handling leader change...")
+	
+	// 发现新的Leader
+	newLeader, err := discoverLeader(s.etcdClient)
+	if err != nil {
+		return fmt.Errorf("failed to discover new leader: %w", err)
+	}
+	
+	if newLeader == s.currentLeader {
+		log.Printf("Leader unchanged: %s", s.currentLeader)
+		return nil // 没有变化
+	}
+	
+	log.Printf("Leader changed from %s to %s, reconnecting...", s.currentLeader, newLeader)
+	
+	// 关闭旧连接
+	if s.metaClient != nil {
+		s.metaClient.Close()
+	}
+	
+	// 创建新连接
+	ctx, cancel := context.WithTimeout(context.Background(), 
+		time.Duration(s.config.MetaServer.ConnectionTimeout)*time.Second)
+	defer cancel()
+	
+	newConn, err := grpc.DialContext(ctx, newLeader,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to connect to new leader %s: %w", newLeader, err)
+	}
+	
+	s.metaClient = newConn
+	s.currentLeader = newLeader
+	
+	log.Printf("Successfully reconnected to new leader: %s", newLeader)
+	return nil
+}
+
 // Stop 停止集群服务
 func (s *EtcdClusterService) Stop() error {
 	if !s.isRunning {
 		return nil
 	}
+	
+	// 停止Leader监听
+	close(s.leaderStopChan)
 	
 	// 停止心跳循环
 	close(s.stopChan)
@@ -361,7 +445,7 @@ func discoverLeader(etcdClient *clientv3.Client) (string, error) {
 	defer cancel()
 	
 	// 查询etcd中的Leader信息
-	resp, err := etcdClient.Get(ctx, "/dfs/metaserver/leader/", clientv3.WithPrefix(), clientv3.WithLimit(1))
+	resp, err := etcdClient.Get(ctx, "/dfs/metaserver/leader/current")
 	if err != nil {
 		return "", fmt.Errorf("failed to query leader from etcd: %w", err)
 	}
@@ -372,6 +456,7 @@ func discoverLeader(etcdClient *clientv3.Client) (string, error) {
 	
 	// Leader的地址从key中提取节点ID，然后查询节点信息
 	leaderNodeID := string(resp.Kvs[0].Value)
+	log.Printf("Found leader node ID: %s", leaderNodeID)
 	
 	// 查询节点信息
 	nodeResp, err := etcdClient.Get(ctx, fmt.Sprintf("/dfs/metaserver/nodes/%s", leaderNodeID))
@@ -383,18 +468,33 @@ func discoverLeader(etcdClient *clientv3.Client) (string, error) {
 		return "", fmt.Errorf("leader node info not found")
 	}
 	
-	// 解析节点地址 - 假设格式为JSON包含addr字段，或直接是地址
+	// 解析节点地址 - 应该是JSON格式
 	nodeInfo := string(nodeResp.Kvs[0].Value)
-	if strings.Contains(nodeInfo, "\"addr\"") {
+	log.Printf("Leader node info: %s", nodeInfo)
+	
+	// 尝试解析JSON格式
+	var node struct {
+		Addr string `json:"addr"`
+	}
+	
+	if err := json.Unmarshal([]byte(nodeInfo), &node); err == nil && node.Addr != "" {
+		log.Printf("Discovered leader address: %s", node.Addr)
+		return node.Addr, nil
+	}
+	
+	// 如果JSON解析失败，尝试简单的字符串解析
+	if strings.Contains(nodeInfo, "\"addr\":\"") {
 		// JSON格式，提取addr字段
 		parts := strings.Split(nodeInfo, "\"addr\":\"")
 		if len(parts) > 1 {
 			addr := strings.Split(parts[1], "\"")[0]
+			log.Printf("Parsed leader address: %s", addr)
 			return addr, nil
 		}
 	}
 	
-	// 直接返回节点信息作为地址
+	// 如果还是失败，尝试直接使用节点信息作为地址
+	log.Printf("Using node info as address: %s", nodeInfo)
 	return nodeInfo, nil
 }
 
