@@ -240,11 +240,11 @@ func (c *MinifsClient) ListStatus(path string) ([]*pb.StatInfo, error) {
 	return resp.Nodes, nil
 }
 
-// A3: 删除文件或目录
-func (c *MinifsClient) Delete(path string, recursive bool) error {
+// A3: 删除文件或目录（默认递归删除）
+func (c *MinifsClient) Delete(path string) error {
 	req := &pb.DeleteNodeRequest{
 		Path:      path,
-		Recursive: recursive,
+		Recursive: true, // 默认递归删除
 	}
 
 	resp, err := c.metaClient.DeleteNode(context.Background(), req)

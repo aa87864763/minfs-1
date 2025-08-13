@@ -134,7 +134,7 @@ func showHelp() {
 	fmt.Println("  mkdir <path>             - Create a directory") 
 	fmt.Println("  ls <path>                - List directory contents")
 	fmt.Println("  stat <path>              - Show file/directory status")
-	fmt.Println("  rm <path> [recursive]    - Delete file/directory")
+	fmt.Println("  rm <path>                - Delete file/directory (recursive)")
 	fmt.Println("")
 	fmt.Println("Data Operations:")
 	fmt.Println("  write <path> <text>      - Write text to file")
@@ -159,7 +159,7 @@ func showHelp() {
 	fmt.Println("  stat /test/hello.txt")
 	fmt.Println("  ls /test")
 	fmt.Println("  rm /test/hello.txt")
-	fmt.Println("  rm /test recursive")
+	fmt.Println("  rm /test")
 }
 
 func cmdCluster(args []string) {
@@ -326,16 +326,12 @@ func cmdStat(args []string) {
 
 func cmdRm(args []string) {
 	if len(args) < 1 {
-		fmt.Println("Usage: rm <path> [recursive]")
+		fmt.Println("Usage: rm <path>")
 		return
 	}
 	
-	recursive := false
-	if len(args) > 1 && strings.ToLower(args[1]) == "recursive" {
-		recursive = true
-	}
-	
-	err := globalClient.Delete(args[0], recursive)
+	// 默认递归删除
+	err := globalClient.Delete(args[0])
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 	}
