@@ -178,13 +178,34 @@ func (h *MetaServerHandler) DeleteNode(ctx context.Context, req *pb.DeleteNodeRe
 		return &pb.SimpleResponse{Success: false}, fmt.Errorf("cannot delete root directory")
 	}
 	
+	// 检查Leader权限
+	if !h.isLeader() {
+		return &pb.SimpleResponse{Success: false}, fmt.Errorf("only leader can handle write operations")
+	}
+	
+	// 1. 创建WAL日志条目
+	walEntry, err := h.createWALEntry(pb.WALOperationType_DELETE_NODE, &pb.DeleteNodeOperation{
+		Path:      req.Path,
+		Recursive: req.Recursive,
+	})
+	if err != nil {
+		log.Printf("DeleteNode: Failed to create WAL entry: %v", err)
+		return &pb.SimpleResponse{Success: false}, err
+	}
+	
+	// 2. 执行实际的元数据操作
 	blocksToDelete, err := h.metadataService.DeleteNode(req.Path, req.Recursive)
 	if err != nil {
 		log.Printf("DeleteNode error: %v", err)
 		return &pb.SimpleResponse{Success: false}, err
 	}
 	
-	// 调度块删除
+	// 3. 同步WAL到followers
+	if walEntry != nil {
+		go h.syncWALToFollowers(walEntry)
+	}
+	
+	// 4. 调度块删除
 	for _, block := range blocksToDelete {
 		h.schedulerService.ScheduleBlockDeletion(block.BlockID, block.Locations)
 	}
@@ -211,9 +232,30 @@ func (h *MetaServerHandler) GetBlockLocations(ctx context.Context, req *pb.GetBl
 	if err != nil {
 		// 文件不存在，创建新文件（写入模式）
 		if req.Size > 0 {
+			// 检查Leader权限
+			if !h.isLeader() {
+				return nil, fmt.Errorf("only leader can handle write operations")
+			}
+			
+			// 1. 创建WAL日志条目
+			walEntry, err := h.createWALEntry(pb.WALOperationType_CREATE_NODE, &pb.CreateNodeOperation{
+				Path: path,
+				Type: pb.FileType_File,
+			})
+			if err != nil {
+				log.Printf("GetBlockLocations: Failed to create WAL entry: %v", err)
+				return nil, fmt.Errorf("failed to create WAL entry: %v", err)
+			}
+			
+			// 2. 执行实际的元数据操作
 			err = h.metadataService.CreateNode(path, pb.FileType_File)
 			if err != nil {
 				return nil, err
+			}
+			
+			// 3. 同步WAL到followers
+			if walEntry != nil {
+				go h.syncWALToFollowers(walEntry)
 			}
 			
 			nodeInfo, err = h.metadataService.GetNodeInfo(path)

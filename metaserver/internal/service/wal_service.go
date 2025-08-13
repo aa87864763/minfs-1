@@ -235,8 +235,17 @@ func (ws *WALService) ReplayLogEntry(entry *pb.LogEntry, metadataService *Metada
 		if err := json.Unmarshal(entry.Data, &op); err != nil {
 			return fmt.Errorf("failed to unmarshal DeleteNodeOperation: %v", err)
 		}
-		// TODO: 实现MetadataService.DeleteNode方法
-		log.Printf("WAL Replay: DeleteNode %s (recursive: %v) - NOT IMPLEMENTED", op.Path, op.Recursive)
+		
+		log.Printf("WAL Replay: DeleteNode %s (recursive: %v)", op.Path, op.Recursive)
+		
+		// 执行删除操作
+		_, err := metadataService.DeleteNode(op.Path, op.Recursive)
+		if err != nil {
+			log.Printf("WAL Replay: Failed to delete node %s: %v", op.Path, err)
+			return err
+		}
+		
+		log.Printf("WAL Replay: Successfully deleted node %s", op.Path)
 		return nil
 		
 	case pb.WALOperationType_UPDATE_NODE:
