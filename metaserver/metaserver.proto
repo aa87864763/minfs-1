@@ -185,6 +185,7 @@ message HeartbeatRequest {
     uint64 block_count = 3;
     uint64 free_space = 4;
     repeated uint64 block_ids_report = 5;
+    uint64 total_capacity = 6;  // 总容量（字节）
 }
 
 message Command {
