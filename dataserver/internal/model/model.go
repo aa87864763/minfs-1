@@ -83,10 +83,11 @@ type ClusterService interface {
 
 // StorageStat 存储统计信息
 type StorageStat struct {
-	BlockCount uint64
-	FreeSpace  uint64
-	UsedSpace  uint64
-	BlockIds   []uint64
+	BlockCount    uint64
+	FreeSpace     uint64
+	UsedSpace     uint64
+	TotalCapacity uint64
+	BlockIds      []uint64
 }
 
 // WriteBlockMetadata 写入块元数据

@@ -358,7 +358,7 @@ func (ss *SchedulerService) repairUnderReplicatedBlock(blockID uint64, expectedL
 	for _, actual := range actualLocations {
 		// 检查这个DataServer是否健康
 		if ds := ss.clusterService.GetDataServerByAddr(actual); ds != nil {
-			_, _, _, isHealthy := ds.GetStatus()
+			_, _, _, _, isHealthy := ds.GetStatus()
 			if isHealthy {
 				sourceAddr = actual
 				break
@@ -377,7 +377,7 @@ func (ss *SchedulerService) repairUnderReplicatedBlock(blockID uint64, expectedL
 	for _, missingAddr := range missingLocations {
 		// 优先修复到原位置：检查原服务器是否健康
 		if ds := ss.clusterService.GetDataServerByAddr(missingAddr); ds != nil {
-			_, _, _, isHealthy := ds.GetStatus()
+			_, _, _, _, isHealthy := ds.GetStatus()
 			if isHealthy {
 				// 原服务器健康，修复到原位置
 				targetAddrs = append(targetAddrs, missingAddr)
@@ -599,7 +599,7 @@ func (ss *SchedulerService) GetBlockDistribution() map[string]uint64 {
 	
 	servers := ss.clusterService.GetAllDataServers()
 	for _, server := range servers {
-		blockCount, _, _, _ := server.GetStatus()
+		blockCount, _, _, _, _ := server.GetStatus()
 		distribution[server.ID] = blockCount
 	}
 	

@@ -98,7 +98,7 @@ func (cs *ClusterService) checkDataServerHealth() {
 	now := time.Now()
 	
 	for id, ds := range cs.dataServers {
-		_, _, lastHeartbeat, isHealthy := ds.GetStatus()
+		_, _, _, lastHeartbeat, isHealthy := ds.GetStatus()
 		
 		// 如果超过心跳超时时间，标记为不健康
 		if isHealthy && now.Sub(lastHeartbeat) > cs.config.Cluster.HeartbeatTimeout {
@@ -125,7 +125,7 @@ func (cs *ClusterService) ProcessHeartbeat(req *pb.HeartbeatRequest) (*pb.Heartb
 	}
 	
 	// 更新状态和块报告
-	ds.UpdateStatus(req.BlockCount, req.FreeSpace)
+	ds.UpdateStatus(req.BlockCount, req.FreeSpace, req.TotalCapacity)
 	ds.UpdateReportedBlocks(req.BlockIdsReport)
 	cs.mutex.Unlock()
 	
@@ -170,7 +170,7 @@ func (cs *ClusterService) GetHealthyDataServers() []*model.DataServerInfo {
 	var healthyServers []*model.DataServerInfo
 	
 	for _, ds := range cs.dataServers {
-		_, _, _, isHealthy := ds.GetStatus()
+		_, _, _, _, isHealthy := ds.GetStatus()
 		if isHealthy {
 			healthyServers = append(healthyServers, ds)
 		}
@@ -203,8 +203,8 @@ func (cs *ClusterService) SelectDataServersForWrite(replicationCount int) ([]*mo
 	
 	// 按块数量排序，优先选择负载最轻的服务器
 	sort.Slice(healthyServers, func(i, j int) bool {
-		blockCountI, _, _, _ := healthyServers[i].GetStatus()
-		blockCountJ, _, _, _ := healthyServers[j].GetStatus()
+		blockCountI, _, _, _, _ := healthyServers[i].GetStatus()
+		blockCountJ, _, _, _, _ := healthyServers[j].GetStatus()
 		return blockCountI < blockCountJ
 	})
 	
@@ -322,7 +322,7 @@ func (cs *ClusterService) GetClusterStats() (totalServers, healthyServers int, t
 	totalServers = len(cs.dataServers)
 	
 	for _, ds := range cs.dataServers {
-		blockCount, freeSpace, _, isHealthy := ds.GetStatus()
+		blockCount, freeSpace, _, _, isHealthy := ds.GetStatus()
 		
 		if isHealthy {
 			healthyServers++
@@ -343,21 +343,22 @@ func (cs *ClusterService) GetClusterInfo() *pb.ClusterInfo {
 	var dataServers []*pb.DataServerMsg
 	
 	for _, ds := range cs.dataServers {
-		blockCount, freeSpace, _, _ := ds.GetStatus()
+		blockCount, freeSpace, totalCapacity, _, _ := ds.GetStatus()
 		
 		// 解析地址
 		host, port := cs.parseAddr(ds.Addr)
 		
-		// 计算容量 (假设单位为MB)
-		totalCapacity := int32(100000) // 默认100GB
-		useCapacity := totalCapacity - int32(freeSpace/1024/1024) // 转换为MB
+		// 使用真实的容量数据，转换为MB
+		totalCapacityMB := int32(totalCapacity / 1024 / 1024)
+		freeSpaceMB := int32(freeSpace / 1024 / 1024)
+		useCapacityMB := totalCapacityMB - freeSpaceMB
 		
 		dataServerMsg := &pb.DataServerMsg{
 			Host:        host,
 			Port:        port,
 			FileTotal:   int32(blockCount),
-			Capacity:    totalCapacity,
-			UseCapacity: useCapacity,
+			Capacity:    totalCapacityMB,
+			UseCapacity: useCapacityMB,
 		}
 		
 		dataServers = append(dataServers, dataServerMsg)
@@ -465,7 +466,7 @@ func (cs *ClusterService) IsDataServerHealthy(dataServerID string) bool {
 		return false
 	}
 	
-	_, _, _, isHealthy := ds.GetStatus()
+	_, _, _, _, isHealthy := ds.GetStatus()
 	return isHealthy
 }
 

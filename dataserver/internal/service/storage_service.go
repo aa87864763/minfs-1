@@ -174,17 +174,18 @@ func (s *LocalStorageService) GetStat() (*model.StorageStat, error) {
 		}
 	}
 	
-	// 获取可用空间
-	freeSpace, err := s.getDiskFreeSpace()
+	// 获取可用空间和总容量
+	freeSpace, totalCapacity, err := s.getDiskSpaceInfo()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get disk free space: %w", err)
+		return nil, fmt.Errorf("failed to get disk space info: %w", err)
 	}
 	
 	return &model.StorageStat{
-		BlockCount: uint64(len(blockIds)),
-		FreeSpace:  freeSpace,
-		UsedSpace:  usedSpace,
-		BlockIds:   blockIds,
+		BlockCount:    uint64(len(blockIds)),
+		FreeSpace:     freeSpace,
+		UsedSpace:     usedSpace,
+		TotalCapacity: totalCapacity,
+		BlockIds:      blockIds,
 	}, nil
 }
 
@@ -214,16 +215,20 @@ func (s *LocalStorageService) extractBlockIDFromPath(path string) uint64 {
 	return blockID
 }
 
-// getDiskFreeSpace 获取磁盘可用空间
-func (s *LocalStorageService) getDiskFreeSpace() (uint64, error) {
+// getDiskSpaceInfo 获取磁盘空间信息（可用空间和总容量）
+func (s *LocalStorageService) getDiskSpaceInfo() (freeSpace, totalCapacity uint64, err error) {
 	var stat syscall.Statfs_t
-	err := syscall.Statfs(s.rootDir, &stat)
+	err = syscall.Statfs(s.rootDir, &stat)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	
 	// 可用空间 = 可用块数 * 块大小
-	return stat.Bavail * uint64(stat.Bsize), nil
+	freeSpace = stat.Bavail * uint64(stat.Bsize)
+	// 总容量 = 总块数 * 块大小
+	totalCapacity = stat.Blocks * uint64(stat.Bsize)
+	
+	return freeSpace, totalCapacity, nil
 }
 
 // cleanupEmptyDirectories 递归清理空的父目录

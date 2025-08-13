@@ -206,6 +206,7 @@ func (s *EtcdClusterService) sendHeartbeat() error {
 		BlockCount:     stat.BlockCount,
 		FreeSpace:      stat.FreeSpace,
 		BlockIdsReport: stat.BlockIds,
+		TotalCapacity:  stat.TotalCapacity,
 	}
 	
 	// 打印心跳请求数据到控制台

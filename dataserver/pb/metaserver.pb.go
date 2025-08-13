@@ -1205,6 +1205,7 @@ type HeartbeatRequest struct {
 	BlockCount     uint64                 `protobuf:"varint,3,opt,name=block_count,json=blockCount,proto3" json:"block_count,omitempty"`
 	FreeSpace      uint64                 `protobuf:"varint,4,opt,name=free_space,json=freeSpace,proto3" json:"free_space,omitempty"`
 	BlockIdsReport []uint64               `protobuf:"varint,5,rep,packed,name=block_ids_report,json=blockIdsReport,proto3" json:"block_ids_report,omitempty"`
+	TotalCapacity  uint64                 `protobuf:"varint,6,opt,name=total_capacity,json=totalCapacity,proto3" json:"total_capacity,omitempty"` // 总容量（字节）
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1272,6 +1273,13 @@ func (x *HeartbeatRequest) GetBlockIdsReport() []uint64 {
 		return x.BlockIdsReport
 	}
 	return nil
+}
+
+func (x *HeartbeatRequest) GetTotalCapacity() uint64 {
+	if x != nil {
+		return x.TotalCapacity
+	}
+	return 0
 }
 
 type Command struct {
@@ -1864,7 +1872,7 @@ const file_metaserver_proto_rawDesc = "" +
 	"\x03md5\x18\x04 \x01(\tR\x03md5\"\x17\n" +
 	"\x15GetClusterInfoRequest\"T\n" +
 	"\x16GetClusterInfoResponse\x12:\n" +
-	"\vclusterInfo\x18\x01 \x01(\v2\x18.dfs_project.ClusterInfoR\vclusterInfo\"\xca\x01\n" +
+	"\vclusterInfo\x18\x01 \x01(\v2\x18.dfs_project.ClusterInfoR\vclusterInfo\"\xf1\x01\n" +
 	"\x10HeartbeatRequest\x12#\n" +
 	"\rdataserver_id\x18\x01 \x01(\tR\fdataserverId\x12'\n" +
 	"\x0fdataserver_addr\x18\x02 \x01(\tR\x0edataserverAddr\x12\x1f\n" +
@@ -1872,7 +1880,8 @@ const file_metaserver_proto_rawDesc = "" +
 	"blockCount\x12\x1d\n" +
 	"\n" +
 	"free_space\x18\x04 \x01(\x04R\tfreeSpace\x12(\n" +
-	"\x10block_ids_report\x18\x05 \x03(\x04R\x0eblockIdsReport\"\x9f\x01\n" +
+	"\x10block_ids_report\x18\x05 \x03(\x04R\x0eblockIdsReport\x12%\n" +
+	"\x0etotal_capacity\x18\x06 \x01(\x04R\rtotalCapacity\"\x9f\x01\n" +
 	"\aCommand\x123\n" +
 	"\x06action\x18\x01 \x01(\x0e2\x1b.dfs_project.Command.ActionR\x06action\x12\x19\n" +
 	"\bblock_id\x18\x02 \x01(\x04R\ablockId\x12\x18\n" +

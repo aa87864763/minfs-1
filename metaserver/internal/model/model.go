@@ -63,6 +63,7 @@ type DataServerInfo struct {
 	Addr          string    // DataServer 地址 (IP:Port)
 	BlockCount    uint64    // 当前存储的块数量
 	FreeSpace     uint64    // 剩余存储空间 (字节)
+	TotalCapacity uint64    // 总存储容量 (字节)
 	LastHeartbeat time.Time // 最后心跳时间
 	IsHealthy     bool      // 是否健康 (基于心跳超时判断)
 	ReportedBlocks map[uint64]bool // 当前报告的块列表
@@ -75,12 +76,13 @@ type DataServerInfo struct {
 }
 
 // UpdateStatus 更新 DataServer 状态 (线程安全)
-func (ds *DataServerInfo) UpdateStatus(blockCount, freeSpace uint64) {
+func (ds *DataServerInfo) UpdateStatus(blockCount, freeSpace, totalCapacity uint64) {
 	ds.mutex.Lock()
 	defer ds.mutex.Unlock()
 	
 	ds.BlockCount = blockCount
 	ds.FreeSpace = freeSpace
+	ds.TotalCapacity = totalCapacity
 	ds.LastHeartbeat = time.Now()
 	ds.IsHealthy = true
 }
@@ -106,11 +108,11 @@ func (ds *DataServerInfo) HasBlock(blockID uint64) bool {
 }
 
 // GetStatus 获取 DataServer 状态 (线程安全读取)
-func (ds *DataServerInfo) GetStatus() (blockCount, freeSpace uint64, lastHeartbeat time.Time, isHealthy bool) {
+func (ds *DataServerInfo) GetStatus() (blockCount, freeSpace, totalCapacity uint64, lastHeartbeat time.Time, isHealthy bool) {
 	ds.mutex.RLock()
 	defer ds.mutex.RUnlock()
 	
-	return ds.BlockCount, ds.FreeSpace, ds.LastHeartbeat, ds.IsHealthy
+	return ds.BlockCount, ds.FreeSpace, ds.TotalCapacity, ds.LastHeartbeat, ds.IsHealthy
 }
 
 // MarkUnhealthy 标记 DataServer 为不健康状态
