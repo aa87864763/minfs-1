@@ -14,27 +14,30 @@ import (
 	"metaserver/pb"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/v3/concurrency"
 )
 
-// LeaderElection 实现基于etcd的分布式leader选举
+// LeaderElection 实现基于etcd Campaign的分布式leader选举
 type LeaderElection struct {
 	etcdClient   *clientv3.Client
 	nodeID       string
 	nodeAddr     string
 	config       *model.Config
 	
-	// 选举相关
-	isLeader     bool
+	// Campaign选举相关
+	session      *concurrency.Session
+	election     *concurrency.Election
+	
+	// 状态相关
+	isLeader      bool
 	currentLeader *MetaServerNode
-	followers    []*MetaServerNode
+	followers     []*MetaServerNode
 	
-	// 新的分布式锁相关字段
-	leaderLease        clientv3.LeaseID
-	leaseKeepAliveChan <-chan *clientv3.LeaseKeepAliveResponse
-	
-	// 状态锁
-	mutex        sync.RWMutex
-	stopChan     chan bool
+	// 控制相关
+	mutex         sync.RWMutex
+	stopChan      chan bool
+	campaignCtx   context.Context
+	campaignCancel context.CancelFunc
 	
 	// 回调函数
 	onLeaderChange func(isLeader bool)
@@ -62,8 +65,20 @@ func NewLeaderElection(config *model.Config, nodeID, nodeAddr string) (*LeaderEl
 		return nil, fmt.Errorf("failed to connect to etcd: %v", err)
 	}
 
+	// 创建session
+	session, err := concurrency.NewSession(client, concurrency.WithTTL(30))
+	if err != nil {
+		client.Close()
+		return nil, fmt.Errorf("failed to create etcd session: %v", err)
+	}
+
+	// 创建election对象
+	election := concurrency.NewElection(session, "/dfs/metaserver/election")
+
 	le := &LeaderElection{
 		etcdClient: client,
+		session:    session,
+		election:   election,
 		nodeID:     nodeID,
 		nodeAddr:   nodeAddr,
 		config:     config,
@@ -88,6 +103,9 @@ func (le *LeaderElection) Start() error {
 		return fmt.Errorf("failed to register node: %v", err)
 	}
 
+	// 创建campaign context
+	le.campaignCtx, le.campaignCancel = context.WithCancel(context.Background())
+
 	// 启动选举goroutine
 	go le.campaignLoop()
 	
@@ -99,145 +117,105 @@ func (le *LeaderElection) Start() error {
 	return nil
 }
 
-// campaignLoop 选举循环 - 使用简单的分布式锁机制
+// campaignLoop 选举循环 - 使用etcd Campaign API
 func (le *LeaderElection) campaignLoop() {
 	for {
 		select {
 		case <-le.stopChan:
 			return
 		default:
-			// 尝试获取leader锁
-			log.Printf("Node %s attempting to acquire leader lock", le.nodeID)
+			log.Printf("Node %s starting campaign for leadership", le.nodeID)
 			
-			if le.tryAcquireLeaderLock() {
-				// 成功获得leader锁
-				le.mutex.Lock()
-				le.isLeader = true
-				le.mutex.Unlock()
-				
-				log.Printf("Node %s successfully became leader", le.nodeID)
-				if le.onLeaderChange != nil {
-					le.onLeaderChange(true)
+			// 创建节点信息作为candidate value
+			nodeInfo := fmt.Sprintf("%s:%s", le.nodeID, le.nodeAddr)
+			
+			// 开始campaign - 这会阻塞直到成为leader或context被取消
+			err := le.election.Campaign(le.campaignCtx, nodeInfo)
+			if err != nil {
+				if err == context.Canceled {
+					log.Printf("Node %s campaign canceled", le.nodeID)
+					return
 				}
-				
-				// 更新followers列表并通知WAL服务
-				le.updateFollowers()
-				
-				// 保持leader身份并定期续约
-				le.maintainLeadership()
-				
-				// 失去leadership
-				le.mutex.Lock()
-				le.isLeader = false
-				le.mutex.Unlock()
-				
-				log.Printf("Node %s lost leadership", le.nodeID)
-				if le.onLeaderChange != nil {
-					le.onLeaderChange(false)
-				}
-			} else {
-				// 未能获得leader锁，等待一段时间后重试
-				log.Printf("Node %s failed to acquire leader lock, retrying in 5s", le.nodeID)
+				log.Printf("Node %s campaign failed: %v, retrying in 5s", le.nodeID, err)
 				time.Sleep(5 * time.Second)
+				continue
+			}
+			
+			le.mutex.Lock()
+			le.isLeader = true
+			le.mutex.Unlock()
+			
+			log.Printf("Node %s successfully became leader", le.nodeID)
+			if le.onLeaderChange != nil {
+				le.onLeaderChange(true)
+			}
+			
+			// 更新followers列表并通知WAL服务
+			le.updateFollowers()
+			
+			// 保持leader身份直到session过期或主动退出
+			le.maintainLeadership()
+			
+			// 失去leadership
+			le.mutex.Lock()
+			le.isLeader = false
+			le.mutex.Unlock()
+			
+			log.Printf("Node %s lost leadership", le.nodeID)
+			if le.onLeaderChange != nil {
+				le.onLeaderChange(false)
 			}
 		}
 	}
 }
 
-// tryAcquireLeaderLock 尝试获取leader锁
-func (le *LeaderElection) tryAcquireLeaderLock() bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	
-	// 使用etcd的原子操作来实现分布式锁
-	leaderKey := "/dfs/metaserver/leader/current"
-	
-	// 创建租约
-	lease, err := le.etcdClient.Grant(ctx, 30) // 30秒TTL
-	if err != nil {
-		log.Printf("Failed to create lease for leader lock: %v", err)
-		return false
-	}
-	
-	// 尝试以原子方式创建leader key（仅当key不存在时）
-	resp, err := le.etcdClient.Txn(ctx).
-		If(clientv3.Compare(clientv3.CreateRevision(leaderKey), "=", 0)).
-		Then(clientv3.OpPut(leaderKey, le.nodeID, clientv3.WithLease(lease.ID))).
-		Commit()
-	
-	if err != nil {
-		log.Printf("Failed to acquire leader lock: %v", err)
-		return false
-	}
-	
-	if !resp.Succeeded {
-		// 锁已被其他节点持有
-		return false
-	}
-	
-	// 成功获得锁，保存lease ID用于后续续约
-	le.leaderLease = lease.ID
-	
-	// 启动续约
-	ch, kaerr := le.etcdClient.KeepAlive(context.Background(), lease.ID)
-	if kaerr != nil {
-		log.Printf("Failed to start lease keep-alive: %v", kaerr)
-		return false
-	}
-	
-	le.leaseKeepAliveChan = ch
-	return true
-}
 
 // maintainLeadership 维持leader身份
 func (le *LeaderElection) maintainLeadership() {
-	defer func() {
-		// 清理lease keep-alive
-		if le.leaseKeepAliveChan != nil {
-			// 取消lease
-			le.etcdClient.Revoke(context.Background(), le.leaderLease)
-		}
-	}()
-	
-	// 监听续约响应和停止信号
-	for {
-		select {
-		case ka := <-le.leaseKeepAliveChan:
-			if ka == nil {
-				// Keep-alive channel关闭，说明lease失效
-				log.Printf("Node %s lease expired, losing leadership", le.nodeID)
-				return
-			}
-			// 续约成功，继续保持leadership
-			
-		case <-le.stopChan:
-			// 收到停止信号
-			log.Printf("Node %s received stop signal, releasing leadership", le.nodeID)
-			return
-			
-		case <-time.After(35 * time.Second):
-			// 超时检查，确保lease还在有效期内
-			log.Printf("Node %s leadership timeout check", le.nodeID)
-			// 可以在这里添加额外的健康检查
-		}
+	// 等待session过期或收到停止信号
+	select {
+	case <-le.session.Done():
+		// Session已过期，自动失去leadership
+		log.Printf("Node %s session expired, losing leadership", le.nodeID)
+		return
+		
+	case <-le.stopChan:
+		// 收到停止信号，主动resign
+		log.Printf("Node %s received stop signal, resigning leadership", le.nodeID)
+		le.election.Resign(context.Background())
+		return
+		
+	case <-le.campaignCtx.Done():
+		// Campaign context被取消
+		log.Printf("Node %s campaign context canceled, losing leadership", le.nodeID)
+		return
 	}
 }
 
 // watchLeader 监听leader变化
 func (le *LeaderElection) watchLeader() {
-	watchChan := le.etcdClient.Watch(context.Background(), "/dfs/metaserver/leader/", clientv3.WithPrefix())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	
+	// 使用election的Observe方法监听leader变化
+	observeChan := le.election.Observe(ctx)
 	
 	for {
 		select {
-		case watchResp := <-watchChan:
-			for _, event := range watchResp.Events {
-				if event.Type == clientv3.EventTypePut {
-					// leader发生变化
-					leaderNodeID := string(event.Kv.Value)
-					le.updateCurrentLeader(leaderNodeID)
-				}
+		case resp, ok := <-observeChan:
+			if !ok {
+				log.Printf("Leader observe channel closed")
+				return
 			}
+			
+			if len(resp.Kvs) > 0 {
+				// 解析leader信息
+				leaderInfo := string(resp.Kvs[0].Value)
+				le.updateCurrentLeaderFromInfo(leaderInfo)
+			}
+			
 		case <-le.stopChan:
+			cancel()
 			return
 		}
 	}
@@ -305,6 +283,41 @@ func (le *LeaderElection) registerNode() error {
 	return nil
 }
 
+// updateCurrentLeaderFromInfo 从leader信息字符串更新当前leader
+func (le *LeaderElection) updateCurrentLeaderFromInfo(leaderInfo string) {
+	// 解析leader信息格式: "nodeID:nodeAddr"
+	parts := strings.Split(leaderInfo, ":")
+	if len(parts) < 2 {
+		log.Printf("Invalid leader info format: %s", leaderInfo)
+		return
+	}
+	
+	nodeID := parts[0]
+	nodeAddr := strings.Join(parts[1:], ":")
+	
+	// 获取leader节点详细信息
+	key := fmt.Sprintf("/dfs/metaserver/nodes/%s", nodeID)
+	resp, err := le.etcdClient.Get(context.Background(), key)
+	if err != nil {
+		log.Printf("Failed to get leader node info: %v", err)
+		return
+	}
+
+	if len(resp.Kvs) > 0 {
+		var leaderNode MetaServerNode
+		if err := json.Unmarshal(resp.Kvs[0].Value, &leaderNode); err != nil {
+			log.Printf("Failed to unmarshal leader node info: %v", err)
+			return
+		}
+		
+		le.mutex.Lock()
+		le.currentLeader = &leaderNode
+		le.mutex.Unlock()
+		
+		log.Printf("Leader updated: %s at %s", nodeID, nodeAddr)
+	}
+}
+
 // updateCurrentLeader 更新当前leader信息
 func (le *LeaderElection) updateCurrentLeader(leaderNodeID string) {
 	// 获取leader节点详细信息
@@ -339,7 +352,6 @@ func (le *LeaderElection) updateFollowers() {
 	}
 
 	var allNodes []*MetaServerNode
-	var leader *MetaServerNode
 
 	// 解析所有节点
 	for _, kv := range resp.Kvs {
@@ -350,14 +362,20 @@ func (le *LeaderElection) updateFollowers() {
 		allNodes = append(allNodes, &node)
 	}
 
-	// 获取当前leader
-	leaderResp, err := le.etcdClient.Get(context.Background(), "/dfs/metaserver/leader/current")
+	// 获取当前leader通过election API
+	var leader *MetaServerNode
+	leaderResp, err := le.election.Leader(context.Background())
 	if err == nil && len(leaderResp.Kvs) > 0 {
-		leaderNodeID := string(leaderResp.Kvs[0].Value)
-		for _, node := range allNodes {
-			if node.NodeID == leaderNodeID {
-				leader = node
-				break
+		// 解析leader信息
+		leaderInfo := string(leaderResp.Kvs[0].Value)
+		parts := strings.Split(leaderInfo, ":")
+		if len(parts) >= 2 {
+			leaderNodeID := parts[0]
+			for _, node := range allNodes {
+				if node.NodeID == leaderNodeID {
+					leader = node
+					break
+				}
 			}
 		}
 	}
@@ -450,11 +468,22 @@ func (le *LeaderElection) parseAddr(addr string) (string, int32) {
 func (le *LeaderElection) Stop() {
 	close(le.stopChan)
 	
-	// 如果当前是leader，释放leader锁
-	if le.isLeader && le.leaderLease != 0 {
-		le.etcdClient.Revoke(context.Background(), le.leaderLease)
+	// 取消campaign context
+	if le.campaignCancel != nil {
+		le.campaignCancel()
 	}
 	
+	// 如果当前是leader，主动resign
+	if le.isLeader && le.election != nil {
+		le.election.Resign(context.Background())
+	}
+	
+	// 关闭session
+	if le.session != nil {
+		le.session.Close()
+	}
+	
+	// 关闭etcd客户端
 	if le.etcdClient != nil {
 		le.etcdClient.Close()
 	}

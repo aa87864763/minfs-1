@@ -73,6 +73,14 @@ func main() {
 		log.Fatalf("Failed to initialize root directory: %v", err)
 	}
 
+	// 初始化 WAL 服务
+	walService := service.NewWALService(db, config, currentNodeID)
+	
+	// 初始化服务层
+	metadataService := service.NewMetadataService(db, config)
+	clusterService := service.NewClusterService(config)
+	schedulerService := service.NewSchedulerService(config, clusterService, metadataService)
+	
 	// 初始化Leader Election服务
 	nodeAddr := fmt.Sprintf("localhost:%d", config.Server.GrpcPort)
 	leaderElection, err := service.NewLeaderElection(config, currentNodeID, nodeAddr)
@@ -80,22 +88,16 @@ func main() {
 		log.Fatalf("Failed to initialize leader election: %v", err)
 	}
 	
+	// 设置Leader Election和WAL服务的相互引用
+	leaderElection.SetWALService(walService)
+	clusterService.SetLeaderElection(leaderElection) // 传递选举服务
+	
+	log.Printf("Node %s initialized and ready to start", currentNodeID)
+	
 	// 启动Leader Election
 	if err := leaderElection.Start(); err != nil {
 		log.Fatalf("Failed to start leader election: %v", err)
 	}
-
-	// 初始化服务层
-	metadataService := service.NewMetadataService(db, config)
-	clusterService := service.NewClusterService(config)
-	clusterService.SetLeaderElection(leaderElection) // 传递选举服务
-	schedulerService := service.NewSchedulerService(config, clusterService, metadataService)
-	
-	// 初始化 WAL 服务
-	walService := service.NewWALService(db, config, currentNodeID)
-	
-	// 设置Leader Election和WAL服务的相互引用
-	leaderElection.SetWALService(walService)
 	
 	// 回放WAL日志以恢复状态
 	if err := replayWALLogs(walService, metadataService); err != nil {

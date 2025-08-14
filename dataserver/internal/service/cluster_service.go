@@ -13,6 +13,7 @@ import (
 	"dataserver/pb"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/v3/concurrency"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -146,11 +147,11 @@ func (s *EtcdClusterService) StartHeartbeatLoop() error {
 
 // startLeaderWatcher 启动Leader变化监听
 func (s *EtcdClusterService) startLeaderWatcher() {
-	// 监听Leader变化 - 监听具体的leader key
-	s.leaderWatcher = s.etcdClient.Watch(context.Background(), "/dfs/metaserver/leader/current")
+	// 监听Leader变化 - 使用新的election路径
+	s.leaderWatcher = s.etcdClient.Watch(context.Background(), "/dfs/metaserver/election/", clientv3.WithPrefix())
 	
 	go func() {
-		log.Println("Leader watcher started, monitoring /dfs/metaserver/leader/current")
+		log.Println("Leader watcher started, monitoring /dfs/metaserver/election/")
 		
 		for {
 			select {
@@ -444,58 +445,66 @@ func discoverLeader(etcdClient *clientv3.Client) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	
-	// 查询etcd中的Leader信息
-	resp, err := etcdClient.Get(ctx, "/dfs/metaserver/leader/current")
+	// 创建一个临时的session来查询leader
+	session, err := concurrency.NewSession(etcdClient, concurrency.WithTTL(10))
 	if err != nil {
-		return "", fmt.Errorf("failed to query leader from etcd: %w", err)
+		return "", fmt.Errorf("failed to create session: %w", err)
 	}
+	defer session.Close()
 	
-	if len(resp.Kvs) == 0 {
-		return "", fmt.Errorf("no leader found in etcd")
-	}
+	// 创建election对象
+	election := concurrency.NewElection(session, "/dfs/metaserver/election")
 	
-	// Leader的地址从key中提取节点ID，然后查询节点信息
-	leaderNodeID := string(resp.Kvs[0].Value)
-	log.Printf("Found leader node ID: %s", leaderNodeID)
-	
-	// 查询节点信息
-	nodeResp, err := etcdClient.Get(ctx, fmt.Sprintf("/dfs/metaserver/nodes/%s", leaderNodeID))
+	// 查询当前leader
+	leaderResp, err := election.Leader(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to get leader node info: %w", err)
+		return "", fmt.Errorf("failed to query leader from election: %w", err)
 	}
 	
-	if len(nodeResp.Kvs) == 0 {
-		return "", fmt.Errorf("leader node info not found")
+	if len(leaderResp.Kvs) == 0 {
+		return "", fmt.Errorf("no leader found in election")
 	}
 	
-	// 解析节点地址 - 应该是JSON格式
-	nodeInfo := string(nodeResp.Kvs[0].Value)
-	log.Printf("Leader node info: %s", nodeInfo)
+	// 解析leader信息: "nodeID:nodeAddr"
+	leaderInfo := string(leaderResp.Kvs[0].Value)
+	log.Printf("Found leader info: %s", leaderInfo)
 	
-	// 尝试解析JSON格式
-	var node struct {
-		Addr string `json:"addr"`
+	parts := strings.Split(leaderInfo, ":")
+	if len(parts) < 2 {
+		return "", fmt.Errorf("invalid leader info format: %s", leaderInfo)
 	}
 	
-	if err := json.Unmarshal([]byte(nodeInfo), &node); err == nil && node.Addr != "" {
-		log.Printf("Discovered leader address: %s", node.Addr)
-		return node.Addr, nil
+	nodeID := parts[0]
+	nodeAddr := strings.Join(parts[1:], ":")
+	
+	log.Printf("Parsed leader - Node ID: %s, Address: %s", nodeID, nodeAddr)
+	
+	// 验证节点信息存在
+	nodeResp, err := etcdClient.Get(ctx, fmt.Sprintf("/dfs/metaserver/nodes/%s", nodeID))
+	if err != nil {
+		log.Printf("Warning: failed to get leader node info: %v", err)
+		// 即使获取节点信息失败，也尝试直接使用地址
+		return nodeAddr, nil
 	}
 	
-	// 如果JSON解析失败，尝试简单的字符串解析
-	if strings.Contains(nodeInfo, "\"addr\":\"") {
-		// JSON格式，提取addr字段
-		parts := strings.Split(nodeInfo, "\"addr\":\"")
-		if len(parts) > 1 {
-			addr := strings.Split(parts[1], "\"")[0]
-			log.Printf("Parsed leader address: %s", addr)
-			return addr, nil
+	if len(nodeResp.Kvs) > 0 {
+		// 解析节点详细信息以获取准确地址
+		nodeInfo := string(nodeResp.Kvs[0].Value)
+		log.Printf("Leader node info: %s", nodeInfo)
+		
+		var node struct {
+			Addr string `json:"addr"`
+		}
+		
+		if err := json.Unmarshal([]byte(nodeInfo), &node); err == nil && node.Addr != "" {
+			log.Printf("Using leader address from node info: %s", node.Addr)
+			return node.Addr, nil
 		}
 	}
 	
-	// 如果还是失败，尝试直接使用节点信息作为地址
-	log.Printf("Using node info as address: %s", nodeInfo)
-	return nodeInfo, nil
+	// 使用从election中解析的地址
+	log.Printf("Using leader address from election: %s", nodeAddr)
+	return nodeAddr, nil
 }
 
 // reconnectToLeader 重连到新的Leader
