@@ -210,7 +210,7 @@ func (cs *ClusterService) GetAllDataServers() []*model.DataServerInfo {
 	return servers
 }
 
-// SelectDataServersForWrite 为写入操作选择 DataServer
+// SelectDataServersForWrite 为写入操作选择 DataServer (选择块数最少的服务器)
 func (cs *ClusterService) SelectDataServersForWrite(replicationCount int) ([]*model.DataServerInfo, error) {
 	healthyServers := cs.GetHealthyDataServers()
 	
@@ -219,73 +219,32 @@ func (cs *ClusterService) SelectDataServersForWrite(replicationCount int) ([]*mo
 			replicationCount, len(healthyServers))
 	}
 	
-	// 按块数量排序，优先选择负载最轻的服务器
+	// 按块数量升序排序，块数少的在前面
 	sort.Slice(healthyServers, func(i, j int) bool {
 		blockCountI, _, _, _, _ := healthyServers[i].GetStatus()
 		blockCountJ, _, _, _, _ := healthyServers[j].GetStatus()
 		return blockCountI < blockCountJ
 	})
 	
-	// 选择前 replicationCount 个服务器
-	selected := make([]*model.DataServerInfo, replicationCount)
-	copy(selected, healthyServers[:replicationCount])
+	// 选择块数最少的前 replicationCount 个服务器
+	var selected []*model.DataServerInfo
+	if len(healthyServers) > replicationCount {
+		selected = healthyServers[:replicationCount]
+	} else {
+		selected = healthyServers
+	}
+	
+	// 打印日志，方便调试
+	var selectedInfo []string
+	for _, s := range selected {
+		bc, _, _, _, _ := s.GetStatus()
+		selectedInfo = append(selectedInfo, fmt.Sprintf("%s (blocks: %d)", s.ID, bc))
+	}
+	log.Printf("Selected %d servers with least blocks: %v", replicationCount, selectedInfo)
 	
 	return selected, nil
 }
 
-// SelectDataServersRoundRobin 使用轮询方式选择 DataServer
-func (cs *ClusterService) SelectDataServersRoundRobin(replicationCount int) ([]*model.DataServerInfo, error) {
-	cs.mutex.Lock()
-	defer cs.mutex.Unlock()
-	
-	healthyServers := cs.GetHealthyDataServers()
-	
-	if len(healthyServers) < replicationCount {
-		return nil, fmt.Errorf("not enough healthy DataServers: need %d, have %d", 
-			replicationCount, len(healthyServers))
-	}
-	
-	// 使用全局轮询计数器
-	var selected []*model.DataServerInfo
-	serverCount := len(healthyServers)
-	
-	// 找到当前轮询起始点
-	startIndex := 0
-	for _, ds := range healthyServers {
-		if ds.RoundRobinIndex > 0 {
-			startIndex = (ds.RoundRobinIndex % serverCount)
-			break
-		}
-	}
-	
-	// 从起始点开始选择 replicationCount 个不同的服务器
-	selectedMap := make(map[string]bool)
-	currentIndex := startIndex
-	
-	for len(selected) < replicationCount && len(selected) < serverCount {
-		ds := healthyServers[currentIndex]
-		if !selectedMap[ds.ID] {
-			selected = append(selected, ds)
-			selectedMap[ds.ID] = true
-			
-			// 更新轮询计数器
-			ds.RoundRobinIndex++
-		}
-		
-		currentIndex = (currentIndex + 1) % serverCount
-		
-		// 防止无限循环
-		if currentIndex == startIndex && len(selected) == 0 {
-			break
-		}
-	}
-	
-	if len(selected) < replicationCount {
-		return nil, fmt.Errorf("unable to select %d different DataServers", replicationCount)
-	}
-	
-	return selected, nil
-}
 
 // SendCommand 向指定的 DataServer 发送命令
 func (cs *ClusterService) SendCommand(dataServerID string, command *model.Command) {

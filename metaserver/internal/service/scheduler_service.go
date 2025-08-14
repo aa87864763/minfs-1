@@ -132,42 +132,6 @@ func (ss *SchedulerService) AllocateBlocks(fileSize uint64, replication int) ([]
 	return blockLocations, nil
 }
 
-// AllocateBlocksRoundRobin 使用轮询方式分配数据块
-func (ss *SchedulerService) AllocateBlocksRoundRobin(fileSize uint64, replication int) ([]*pb.BlockLocations, error) {
-	if replication <= 0 {
-		replication = ss.config.Cluster.DefaultReplication
-	}
-	
-	blockCount := (fileSize + ss.config.Scheduler.BlockSize - 1) / ss.config.Scheduler.BlockSize
-	if blockCount == 0 {
-		blockCount = 1
-	}
-	
-	var blockLocations []*pb.BlockLocations
-	
-	for i := uint64(0); i < blockCount; i++ {
-		selectedServers, err := ss.clusterService.SelectDataServersRoundRobin(replication)
-		if err != nil {
-			return nil, fmt.Errorf("failed to select DataServers for block %d: %v", i, err)
-		}
-		
-		blockID := ss.generateBlockID()
-		
-		var locations []string
-		for _, server := range selectedServers {
-			locations = append(locations, server.Addr)
-		}
-		
-		blockLoc := &pb.BlockLocations{
-			BlockId:   blockID,
-			Locations: locations,
-		}
-		
-		blockLocations = append(blockLocations, blockLoc)
-	}
-	
-	return blockLocations, nil
-}
 
 // fsckLoop FSCK 循环检查
 func (ss *SchedulerService) fsckLoop() {
@@ -187,6 +151,7 @@ func (ss *SchedulerService) runFSCK() {
 	
 	start := time.Now()
 	repairedBlocks := 0
+	cleanedOrphanBlocks := 0
 	orphanBlocks := 0
 	underReplicatedBlocks := 0
 	
@@ -245,13 +210,17 @@ func (ss *SchedulerService) runFSCK() {
 		if _, exists := expectedBlocks[blockID]; !exists {
 			orphanBlocks++
 			log.Printf("FSCK: Found orphan block %d at locations: %v", blockID, actualLocations)
-			// 这些块可能需要清理
+			
+			// 立即清理孤儿块
+			log.Printf("FSCK: Scheduling deletion of orphan block %d", blockID)
+			ss.ScheduleBlockDeletion(blockID, actualLocations)
+			cleanedOrphanBlocks++ // 计入清理数量
 		}
 	}
 	
 	duration := time.Since(start)
-	log.Printf("FSCK completed in %v: checked %d blocks, repaired %d under-replicated, found %d orphans", 
-		duration, len(expectedBlocks), repairedBlocks, orphanBlocks)
+	log.Printf("FSCK completed in %v: checked %d blocks, repaired %d under-replicated, found %d orphans, cleaned %d orphans", 
+		duration, len(expectedBlocks), repairedBlocks, orphanBlocks, cleanedOrphanBlocks)
 	
 	if underReplicatedBlocks > 0 {
 		log.Printf("FSCK: %d blocks are under-replicated and need attention", underReplicatedBlocks)
@@ -647,60 +616,6 @@ func (ss *SchedulerService) ScheduleBlockReplication(blockID uint64, sourceAddr 
 	}
 }
 
-// GetOptimalDataServers 获取最优的 DataServer 列表（负载均衡）
-func (ss *SchedulerService) GetOptimalDataServers(count int) ([]*model.DataServerInfo, error) {
-	return ss.clusterService.SelectDataServersForWrite(count)
-}
-
-// GetBlockDistribution 获取块分布统计
-func (ss *SchedulerService) GetBlockDistribution() map[string]uint64 {
-	distribution := make(map[string]uint64)
-	
-	servers := ss.clusterService.GetAllDataServers()
-	for _, server := range servers {
-		blockCount, _, _, _, _ := server.GetStatus()
-		distribution[server.ID] = blockCount
-	}
-	
-	return distribution
-}
-
-// RebalanceCluster 集群重平衡（简化实现）
-func (ss *SchedulerService) RebalanceCluster() error {
-	log.Println("Starting cluster rebalancing...")
-	
-	distribution := ss.GetBlockDistribution()
-	
-	// 计算平均块数
-	var totalBlocks uint64
-	serverCount := len(distribution)
-	
-	if serverCount == 0 {
-		return fmt.Errorf("no DataServers available")
-	}
-	
-	for _, blockCount := range distribution {
-		totalBlocks += blockCount
-	}
-	
-	avgBlocks := totalBlocks / uint64(serverCount)
-	
-	log.Printf("Cluster stats: %d servers, %d total blocks, %.1f avg blocks per server", 
-		serverCount, totalBlocks, float64(avgBlocks))
-	
-	// 简化实现：只打印统计信息
-	// 实际的重平衡需要复杂的算法和数据迁移
-	
-	return nil
-}
-
-// GetReplicationStatus 获取副本状态统计
-func (ss *SchedulerService) GetReplicationStatus() (underReplicated, overReplicated, healthy int) {
-	// TODO: 实现副本状态检查
-	// 这需要遍历所有文件的块映射并检查每个块的副本数
-	
-	return 0, 0, 0
-}
 
 // Stop 停止调度服务
 func (ss *SchedulerService) Stop() {
@@ -722,50 +637,6 @@ func (ss *SchedulerService) Stop() {
 	log.Println("SchedulerService stopped")
 }
 
-// GetSchedulerStats 获取调度器统计信息
-func (ss *SchedulerService) GetSchedulerStats() map[string]interface{} {
-	stats := make(map[string]interface{})
-	
-	// 获取集群统计
-	totalServers, healthyServers, totalBlocks, totalFreeSpace := ss.clusterService.GetClusterStats()
-	
-	stats["total_servers"] = totalServers
-	stats["healthy_servers"] = healthyServers
-	stats["total_blocks"] = totalBlocks
-	stats["total_free_space_mb"] = totalFreeSpace / 1024 / 1024
-	stats["block_size_mb"] = ss.config.Scheduler.BlockSize / 1024 / 1024
-	stats["default_replication"] = ss.config.Cluster.DefaultReplication
-	
-	// 获取副本状态
-	under, over, healthy := ss.GetReplicationStatus()
-	stats["under_replicated_blocks"] = under
-	stats["over_replicated_blocks"] = over
-	stats["healthy_blocks"] = healthy
-	
-	return stats
-}
-
-// ValidateClusterHealth 验证集群健康状况
-func (ss *SchedulerService) ValidateClusterHealth() []string {
-	var issues []string
-	
-	totalServers, healthyServers, _, totalFreeSpace := ss.clusterService.GetClusterStats()
-	
-	if totalServers == 0 {
-		issues = append(issues, "No DataServers registered")
-	}
-	
-	if healthyServers < ss.config.Cluster.DefaultReplication {
-		issues = append(issues, fmt.Sprintf("Not enough healthy servers (%d) to maintain replication (%d)", 
-			healthyServers, ss.config.Cluster.DefaultReplication))
-	}
-	
-	if totalFreeSpace < ss.config.Scheduler.BlockSize {
-		issues = append(issues, "Cluster running low on storage space")
-	}
-	
-	return issues
-}
 
 // ForceGC 强制执行垃圾回收
 func (ss *SchedulerService) ForceGC() {
