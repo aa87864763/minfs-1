@@ -13,6 +13,9 @@ import (
 	"metaserver/pb"
 )
 
+// BlockReplicationCallback 块复制完成回调函数类型
+type BlockReplicationCallback func(blockID uint64, targetAddr string, success bool)
+
 type ClusterService struct {
 	config      *model.Config
 	dataServers map[string]*model.DataServerInfo // Key: DataServer ID
@@ -31,6 +34,9 @@ type ClusterService struct {
 	
 	// Leader Election 服务
 	leaderElection *LeaderElection
+	
+	// 块复制完成回调
+	replicationCallback BlockReplicationCallback
 }
 
 func NewClusterService(config *model.Config) *ClusterService {
@@ -64,6 +70,11 @@ func NewClusterService(config *model.Config) *ClusterService {
 // SetLeaderElection 设置Leader Election服务
 func (cs *ClusterService) SetLeaderElection(le *LeaderElection) {
 	cs.leaderElection = le
+}
+
+// SetReplicationCallback 设置块复制完成回调
+func (cs *ClusterService) SetReplicationCallback(callback BlockReplicationCallback) {
+	cs.replicationCallback = callback
 }
 
 // IsLeader 检查当前节点是否为leader
@@ -126,8 +137,15 @@ func (cs *ClusterService) ProcessHeartbeat(req *pb.HeartbeatRequest) (*pb.Heartb
 	
 	// 更新状态和块报告
 	ds.UpdateStatus(req.BlockCount, req.FreeSpace, req.TotalCapacity)
-	ds.UpdateReportedBlocks(req.BlockIdsReport)
+	newBlocks := ds.UpdateReportedBlocks(req.BlockIdsReport)
 	cs.mutex.Unlock()
+	
+	// 如果有回调函数且有新增的块，触发回调
+	if cs.replicationCallback != nil && len(newBlocks) > 0 {
+		for _, blockID := range newBlocks {
+			cs.replicationCallback(blockID, req.DataserverAddr, true)
+		}
+	}
 	
 	// 获取待下发的命令
 	cs.commandMutex.Lock()

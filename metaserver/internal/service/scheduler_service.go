@@ -13,6 +13,14 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// RepairTask 表示正在进行的修复任务
+type RepairTask struct {
+	BlockID    uint64
+	SourceAddr string
+	TargetAddr string
+	StartTime  time.Time
+}
+
 type SchedulerService struct {
 	config          *model.Config
 	clusterService  *ClusterService
@@ -33,6 +41,10 @@ type SchedulerService struct {
 	// 块 ID 生成器
 	blockIDCounter uint64
 	blockIDMutex   sync.Mutex
+	
+	// 正在修复的块跟踪
+	repairingBlocks map[uint64][]RepairTask // blockID -> 修复任务列表
+	repairMutex     sync.RWMutex
 }
 
 func NewSchedulerService(config *model.Config, clusterService *ClusterService, metadataService *MetadataService) *SchedulerService {
@@ -42,7 +54,11 @@ func NewSchedulerService(config *model.Config, clusterService *ClusterService, m
 		metadataService: metadataService,
 		stopChan:        make(chan bool),
 		blockIDCounter:  uint64(time.Now().Unix()), // 使用时间戳作为初始值
+		repairingBlocks: make(map[uint64][]RepairTask),
 	}
+	
+	// 设置块复制完成回调
+	clusterService.SetReplicationCallback(ss.OnBlockReplicationComplete)
 	
 	// 启动后台任务
 	ss.startBackgroundTasks()
@@ -174,6 +190,9 @@ func (ss *SchedulerService) runFSCK() {
 	orphanBlocks := 0
 	underReplicatedBlocks := 0
 	
+	// 清理过期的修复任务
+	ss.cleanupExpiredRepairTasks()
+	
 	// 检查集群健康状况
 	healthyServers := ss.clusterService.GetHealthyDataServers()
 	if len(healthyServers) < ss.config.Cluster.DefaultReplication {
@@ -199,8 +218,8 @@ func (ss *SchedulerService) runFSCK() {
 	for blockID, expectedLocations := range expectedBlocks {
 		actualLocations := actualBlocks[blockID]
 		
-		// 检查副本不足的情况
-		missingLocations := ss.findMissingReplicas(expectedLocations, actualLocations)
+		// 检查副本不足的情况，但要考虑正在修复的目标
+		missingLocations := ss.findMissingReplicasWithRepairTracking(blockID, expectedLocations, actualLocations)
 		if len(missingLocations) > 0 {
 			underReplicatedBlocks++
 			log.Printf("FSCK: Block %d is under-replicated, missing from %d servers: %v", 
@@ -333,6 +352,43 @@ func (ss *SchedulerService) findMissingReplicas(expectedLocations, actualLocatio
 				break
 			}
 		}
+		if !found {
+			missing = append(missing, expected)
+		}
+	}
+	
+	return missing
+}
+
+// findMissingReplicasWithRepairTracking 找出缺失的副本位置，但排除正在修复的目标
+func (ss *SchedulerService) findMissingReplicasWithRepairTracking(blockID uint64, expectedLocations, actualLocations []string) []string {
+	var missing []string
+	
+	// 获取正在修复到的目标地址
+	repairingTargets := ss.getRepairingTargets(blockID)
+	
+	for _, expected := range expectedLocations {
+		found := false
+		
+		// 检查是否在实际位置中
+		for _, actual := range actualLocations {
+			if expected == actual {
+				found = true
+				break
+			}
+		}
+		
+		// 如果不在实际位置中，检查是否正在修复中
+		if !found {
+			for _, repairing := range repairingTargets {
+				if expected == repairing {
+					found = true
+					log.Printf("FSCK: Block %d missing from %s but repair in progress, skipping", blockID, expected)
+					break
+				}
+			}
+		}
+		
 		if !found {
 			missing = append(missing, expected)
 		}
@@ -576,6 +632,9 @@ func (ss *SchedulerService) ScheduleBlockReplication(blockID uint64, sourceAddr 
 			continue
 		}
 		
+		// 记录修复任务
+		ss.addRepairTask(blockID, sourceAddr, targetAddr)
+		
 		command := &model.Command{
 			Action:  "COPY_BLOCK",
 			BlockID: blockID,
@@ -716,4 +775,92 @@ func (ss *SchedulerService) ForceGC() {
 // ForceFSCK 强制执行文件系统检查
 func (ss *SchedulerService) ForceFSCK() {
 	go ss.runFSCK()
+}
+
+// addRepairTask 添加修复任务跟踪
+func (ss *SchedulerService) addRepairTask(blockID uint64, sourceAddr, targetAddr string) {
+	ss.repairMutex.Lock()
+	defer ss.repairMutex.Unlock()
+	
+	task := RepairTask{
+		BlockID:    blockID,
+		SourceAddr: sourceAddr,
+		TargetAddr: targetAddr,
+		StartTime:  time.Now(),
+	}
+	
+	ss.repairingBlocks[blockID] = append(ss.repairingBlocks[blockID], task)
+	log.Printf("Added repair task: block %d from %s to %s", blockID, sourceAddr, targetAddr)
+}
+
+// removeRepairTask 移除修复任务跟踪
+func (ss *SchedulerService) removeRepairTask(blockID uint64, targetAddr string) {
+	ss.repairMutex.Lock()
+	defer ss.repairMutex.Unlock()
+	
+	tasks := ss.repairingBlocks[blockID]
+	for i, task := range tasks {
+		if task.TargetAddr == targetAddr {
+			// 移除该任务
+			ss.repairingBlocks[blockID] = append(tasks[:i], tasks[i+1:]...)
+			log.Printf("Completed repair task: block %d to %s (took %v)", 
+				blockID, targetAddr, time.Since(task.StartTime))
+			break
+		}
+	}
+	
+	// 如果该块的所有修复任务都完成了，删除该条目
+	if len(ss.repairingBlocks[blockID]) == 0 {
+		delete(ss.repairingBlocks, blockID)
+	}
+}
+
+// getRepairingTargets 获取正在修复到的目标地址列表
+func (ss *SchedulerService) getRepairingTargets(blockID uint64) []string {
+	ss.repairMutex.RLock()
+	defer ss.repairMutex.RUnlock()
+	
+	var targets []string
+	for _, task := range ss.repairingBlocks[blockID] {
+		targets = append(targets, task.TargetAddr)
+	}
+	return targets
+}
+
+// cleanupExpiredRepairTasks 清理超时的修复任务
+func (ss *SchedulerService) cleanupExpiredRepairTasks() {
+	ss.repairMutex.Lock()
+	defer ss.repairMutex.Unlock()
+	
+	timeout := 5 * time.Minute // 5分钟超时
+	now := time.Now()
+	
+	for blockID, tasks := range ss.repairingBlocks {
+		var activeTasks []RepairTask
+		for _, task := range tasks {
+			if now.Sub(task.StartTime) < timeout {
+				activeTasks = append(activeTasks, task)
+			} else {
+				log.Printf("Repair task expired: block %d to %s (started %v ago)", 
+					blockID, task.TargetAddr, now.Sub(task.StartTime))
+			}
+		}
+		
+		if len(activeTasks) == 0 {
+			delete(ss.repairingBlocks, blockID)
+		} else {
+			ss.repairingBlocks[blockID] = activeTasks
+		}
+	}
+}
+
+// OnBlockReplicationComplete 当DataServer完成块复制时调用
+func (ss *SchedulerService) OnBlockReplicationComplete(blockID uint64, targetAddr string, success bool) {
+	if success {
+		ss.removeRepairTask(blockID, targetAddr)
+		log.Printf("Block %d replication to %s completed successfully", blockID, targetAddr)
+	} else {
+		log.Printf("Block %d replication to %s failed", blockID, targetAddr)
+		// 失败的情况下，可以选择重新调度或保持任务状态等待重试
+	}
 }

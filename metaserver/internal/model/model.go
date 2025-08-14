@@ -87,16 +87,27 @@ func (ds *DataServerInfo) UpdateStatus(blockCount, freeSpace, totalCapacity uint
 	ds.IsHealthy = true
 }
 
-// UpdateReportedBlocks 更新报告的块列表
-func (ds *DataServerInfo) UpdateReportedBlocks(blockIDs []uint64) {
+// UpdateReportedBlocks 更新报告的块列表，返回新增的块ID列表
+func (ds *DataServerInfo) UpdateReportedBlocks(blockIDs []uint64) []uint64 {
 	ds.mutex.Lock()
 	defer ds.mutex.Unlock()
 	
-	// 重新创建块列表
-	ds.ReportedBlocks = make(map[uint64]bool)
+	// 记录新增的块
+	var newBlocks []uint64
+	newReportedBlocks := make(map[uint64]bool)
+	
 	for _, blockID := range blockIDs {
-		ds.ReportedBlocks[blockID] = true
+		newReportedBlocks[blockID] = true
+		// 如果这是一个新块（之前没有报告过）
+		if !ds.ReportedBlocks[blockID] {
+			newBlocks = append(newBlocks, blockID)
+		}
 	}
+	
+	// 更新块列表
+	ds.ReportedBlocks = newReportedBlocks
+	
+	return newBlocks
 }
 
 // HasBlock 检查是否包含指定的块
