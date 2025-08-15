@@ -73,7 +73,7 @@ func NewLeaderElection(config *model.Config, nodeID, nodeAddr string) (*LeaderEl
 	}
 
 	// 创建election对象
-	election := concurrency.NewElection(session, "/dfs/metaserver/election")
+	election := concurrency.NewElection(session, "/minfs/metaserver/election")
 
 	le := &LeaderElection{
 		etcdClient: client,
@@ -223,7 +223,7 @@ func (le *LeaderElection) watchLeader() {
 
 // watchNodes 监听节点变化
 func (le *LeaderElection) watchNodes() {
-	watchChan := le.etcdClient.Watch(context.Background(), "/dfs/metaserver/nodes/", clientv3.WithPrefix())
+	watchChan := le.etcdClient.Watch(context.Background(), "/minfs/metaserver/nodes/", clientv3.WithPrefix())
 	
 	for {
 		select {
@@ -261,7 +261,7 @@ func (le *LeaderElection) registerNode() error {
 		return err
 	}
 
-	key := fmt.Sprintf("/dfs/metaserver/nodes/%s", le.nodeID)
+	key := fmt.Sprintf("/minfs/metaserver/nodes/%s", le.nodeID)
 	_, err = le.etcdClient.Put(context.Background(), key, string(nodeData), clientv3.WithLease(lease.ID))
 	if err != nil {
 		return err
@@ -296,7 +296,7 @@ func (le *LeaderElection) updateCurrentLeaderFromInfo(leaderInfo string) {
 	nodeAddr := strings.Join(parts[1:], ":")
 	
 	// 获取leader节点详细信息
-	key := fmt.Sprintf("/dfs/metaserver/nodes/%s", nodeID)
+	key := fmt.Sprintf("/minfs/metaserver/nodes/%s", nodeID)
 	resp, err := le.etcdClient.Get(context.Background(), key)
 	if err != nil {
 		log.Printf("Failed to get leader node info: %v", err)
@@ -321,7 +321,7 @@ func (le *LeaderElection) updateCurrentLeaderFromInfo(leaderInfo string) {
 // updateCurrentLeader 更新当前leader信息
 func (le *LeaderElection) updateCurrentLeader(leaderNodeID string) {
 	// 获取leader节点详细信息
-	key := fmt.Sprintf("/dfs/metaserver/nodes/%s", leaderNodeID)
+	key := fmt.Sprintf("/minfs/metaserver/nodes/%s", leaderNodeID)
 	resp, err := le.etcdClient.Get(context.Background(), key)
 	if err != nil {
 		log.Printf("Failed to get leader node info: %v", err)
@@ -345,7 +345,7 @@ func (le *LeaderElection) updateCurrentLeader(leaderNodeID string) {
 
 // updateFollowers 更新followers列表
 func (le *LeaderElection) updateFollowers() {
-	resp, err := le.etcdClient.Get(context.Background(), "/dfs/metaserver/nodes/", clientv3.WithPrefix())
+	resp, err := le.etcdClient.Get(context.Background(), "/minfs/metaserver/nodes/", clientv3.WithPrefix())
 	if err != nil {
 		log.Printf("Failed to get all nodes: %v", err)
 		return

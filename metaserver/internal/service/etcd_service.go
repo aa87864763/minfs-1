@@ -145,7 +145,7 @@ func (es *EtcdService) RegisterMetaServer(metaServerID, addr string) error {
 		return fmt.Errorf("failed to marshal MetaServer registration: %v", err)
 	}
 
-	key := fmt.Sprintf("/dfs/metaservers/%s", metaServerID)
+	key := fmt.Sprintf("/minfs/metaservers/%s", metaServerID)
 	
 	ctx, cancel := context.WithTimeout(context.Background(), es.config.Etcd.Timeout)
 	defer cancel()

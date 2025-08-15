@@ -101,7 +101,7 @@ func (s *EtcdClusterService) RegisterToETCD() error {
 	s.leaseID = leaseResp.ID
 	
 	// 注册服务key
-	key := fmt.Sprintf("/dfs/dataserver/%s", s.config.Server.DataserverId)
+	key := fmt.Sprintf("/minfs/dataserver/%s", s.config.Server.DataserverId)
 	value := fmt.Sprintf("%s", s.config.Server.ListenAddress)
 	
 	_, err = s.etcdClient.Put(ctx, key, value, clientv3.WithLease(s.leaseID))
@@ -148,10 +148,10 @@ func (s *EtcdClusterService) StartHeartbeatLoop() error {
 // startLeaderWatcher 启动Leader变化监听
 func (s *EtcdClusterService) startLeaderWatcher() {
 	// 监听Leader变化 - 使用新的election路径
-	s.leaderWatcher = s.etcdClient.Watch(context.Background(), "/dfs/metaserver/election/", clientv3.WithPrefix())
+	s.leaderWatcher = s.etcdClient.Watch(context.Background(), "/minfs/metaserver/election/", clientv3.WithPrefix())
 	
 	go func() {
-		log.Println("Leader watcher started, monitoring /dfs/metaserver/election/")
+		log.Println("Leader watcher started, monitoring /minfs/metaserver/election/")
 		
 		for {
 			select {
@@ -453,7 +453,7 @@ func discoverLeader(etcdClient *clientv3.Client) (string, error) {
 	defer session.Close()
 	
 	// 创建election对象
-	election := concurrency.NewElection(session, "/dfs/metaserver/election")
+	election := concurrency.NewElection(session, "/minfs/metaserver/election")
 	
 	// 查询当前leader
 	leaderResp, err := election.Leader(ctx)
@@ -480,7 +480,7 @@ func discoverLeader(etcdClient *clientv3.Client) (string, error) {
 	log.Printf("Parsed leader - Node ID: %s, Address: %s", nodeID, nodeAddr)
 	
 	// 验证节点信息存在
-	nodeResp, err := etcdClient.Get(ctx, fmt.Sprintf("/dfs/metaserver/nodes/%s", nodeID))
+	nodeResp, err := etcdClient.Get(ctx, fmt.Sprintf("/minfs/metaserver/nodes/%s", nodeID))
 	if err != nil {
 		log.Printf("Warning: failed to get leader node info: %v", err)
 		// 即使获取节点信息失败，也尝试直接使用地址

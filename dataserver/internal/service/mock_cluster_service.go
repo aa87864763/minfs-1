@@ -27,7 +27,7 @@ func NewMockClusterService(config *model.Config, storageService model.StorageSer
 
 // RegisterToETCD 模拟注册到etcd
 func (s *MockClusterService) RegisterToETCD() error {
-	key := fmt.Sprintf("/dfs/dataserver/%s", s.config.Server.DataserverId)
+	key := fmt.Sprintf("/minfs/dataserver/%s", s.config.Server.DataserverId)
 	value := s.config.Server.ListenAddress
 	
 	log.Printf("[MOCK] Registered to etcd: %s -> %s", key, value)
