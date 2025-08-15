@@ -243,10 +243,11 @@ message GetLeaderResponse {
 
 // WAL操作类型枚举
 enum WALOperationType {
-    CREATE_NODE = 0;    // 创建文件或目录
-    DELETE_NODE = 1;    // 删除文件或目录
-    UPDATE_NODE = 2;    // 更新节点信息
-    FINALIZE_WRITE = 3; // 完成写入操作
+    CREATE_NODE = 0;           // 创建文件或目录
+    DELETE_NODE = 1;           // 删除文件或目录
+    UPDATE_NODE = 2;           // 更新节点信息
+    FINALIZE_WRITE = 3;        // 完成写入操作
+    UPDATE_BLOCK_LOCATION = 4; // 更新块位置信息
 }
 
 // WAL日志条目 (用于主从同步)
@@ -284,4 +285,11 @@ message FinalizeWriteOperation {
     uint64 inode = 3;
     int64 size = 4;
     string md5 = 5;
+}
+
+// 更新块位置信息的数据
+message UpdateBlockLocationOperation {
+    uint64 block_id = 1;   // 块ID
+    string old_addr = 2;   // 原地址
+    string new_addr = 3;   // 新地址
 }
