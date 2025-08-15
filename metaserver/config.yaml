@@ -13,6 +13,7 @@ database:
 cluster:
   default_replication: 3      # 默认副本数
   heartbeat_timeout: 20s      # 心跳超时时间
+  permanent_down_threshold: 20s # 永久宕机判断阈值
 
 # etcd 配置
 etcd:
@@ -22,9 +23,13 @@ etcd:
   
 # 调度配置
 scheduler:
-  fsck_interval: 100s        # FSCK检查间隔 (扫描+恢复周期)
+  fsck_interval: 30s         # FSCK检查间隔 (扫描+恢复周期) 
   gc_interval: 1m            # 垃圾回收检查间隔
   block_size: 4194304        # 数据块大小 (4MB)
+  fsck_workers: 50           # FSCK检查工作协程数
+  repair_workers: 20         # 修复任务工作协程数
+  repair_queue_size: 5000    # 修复任务队列大小
+  max_concurrent_repairs: 100 # 最大并发修复任务数
 
 # 日志配置
 logging:
