@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 // 与 dataserver.proto 使用同一个包名，便于管理
-package dfs_project; 
+package dfs_project;
 
 option go_package = "./pb";
 
@@ -11,25 +11,25 @@ service MetaServerService {
 
     // 对应考核点 A1: 创建文件或目录
     rpc CreateNode(CreateNodeRequest) returns (SimpleResponse);
-    
+
     // 对应考核点 A2: 获取单个文件或目录的属性信息
     rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse);
-    
+
     // 对应考核点 A2: 列出目录下的所有条目
     rpc ListDirectory(ListDirectoryRequest) returns (ListDirectoryResponse);
-    
+
     // 对应考核点 A3: 删除文件或目录 (支持递归)
     rpc DeleteNode(DeleteNodeRequest) returns (SimpleResponse);
 
     // 对应考核点 A4: 为写入/读取文件做准备，获取数据块的位置信息
     rpc GetBlockLocations(GetBlockLocationsRequest) returns (GetBlockLocationsResponse);
-    
+
     // 对应考核点 A4: 当 Client 写完一个文件后，调用此接口来最终确认
     rpc FinalizeWrite(FinalizeWriteRequest) returns (SimpleResponse);
-    
+
     // 对应考核点 A5, A6, B7: 获取集群信息，用于展示副本分布等
     rpc GetClusterInfo(GetClusterInfoRequest) returns (GetClusterInfoResponse);
-    
+
     // 获取文件的副本分布情况
     rpc GetReplicationInfo(GetReplicationInfoRequest) returns (GetReplicationInfoResponse);
 
@@ -42,7 +42,7 @@ service MetaServerService {
 
     // 用于主从节点之间，实时同步元数据操作日志 (WAL)
     rpc SyncWAL(stream LogEntry) returns (SimpleResponse);
-    
+
     // 获取主从信息 (HA 支持)
     rpc GetLeader(GetLeaderRequest) returns (GetLeaderResponse);
 }
@@ -53,7 +53,7 @@ service MetaServerService {
 // 文件类型枚举 (匹配 easyClient FileType)
 enum FileType {
     Unknown = 0;     // easyClient: Unknown(0)
-    Volume = 1;      // easyClient: Volume(1) 
+    Volume = 1;      // easyClient: Volume(1)
     File = 2;        // easyClient: File(2)
     Directory = 3;   // easyClient: Directory(3)
 }
@@ -74,6 +74,7 @@ message StatInfo {
     int64 mtime = 3;                     // 修改时间 Unix时间戳(毫秒)
     FileType type = 4;                   // 文件类型
     repeated ReplicaData replicaData = 5; // 副本数据列表
+    string md5 = 6;
 }
 
 // MetaServer 信息 (匹配 easyClient MetaServerMsg)
@@ -185,7 +186,6 @@ message HeartbeatRequest {
     uint64 block_count = 3;
     uint64 free_space = 4;
     repeated uint64 block_ids_report = 5;
-    uint64 total_capacity = 6;  // 总容量（字节）
 }
 
 message Command {
@@ -195,7 +195,7 @@ message Command {
     }
     Action action = 1;
     uint64 block_id = 2;
-    repeated string targets = 3; 
+    repeated string targets = 3;
 }
 
 message HeartbeatResponse {

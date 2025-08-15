@@ -74,6 +74,7 @@ message StatInfo {
     int64 mtime = 3;                     // 修改时间 Unix时间戳(毫秒)
     FileType type = 4;                   // 文件类型
     repeated ReplicaData replicaData = 5; // 副本数据列表
+    string md5 = 6;
 }
 
 // MetaServer 信息 (匹配 easyClient MetaServerMsg)
