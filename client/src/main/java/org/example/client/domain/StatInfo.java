@@ -9,7 +9,6 @@ public class StatInfo
     public long mtime;
     public FileType type;
     public List<ReplicaData> replicaData;
-    public String md5;
     public StatInfo() {}
 
     public String getPath() {
@@ -52,13 +51,6 @@ public class StatInfo
         this.replicaData = replicaData;
     }
 
-    public String getMd5() {
-        return md5;
-    }
-
-    public void setMd5(String md5) {
-        this.md5 = md5;
-    }
 
     @Override
     public String toString() {

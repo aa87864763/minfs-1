@@ -2,9 +2,7 @@ package org.example.client;
 
 import dfs_project.Metaserver;
 import org.example.client.client.MinFSClient;
-import org.example.client.domain.ClusterInfo;
-import org.example.client.domain.StatInfo;
-import org.springframework.beans.BeanUtils;
+import org.example.client.domain.*;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -72,7 +70,43 @@ public class EFileSystem extends FileSystem{
             return null; // 文件不存在时返回null
         }
         StatInfo statInfo1=new StatInfo();
-        BeanUtils.copyProperties(statInfo,statInfo1);
+        statInfo1.setPath(statInfo.getPath());
+        statInfo1.setSize(statInfo.getSize());
+        statInfo1.setMtime(statInfo.getMtime());
+        // 转换FileType枚举
+        statInfo1.setType(convertProtoFileType(statInfo.getType()));
+        // 获取副本数据（通过getReplicationInfo）
+        List<ReplicaData> replicaDataList = new ArrayList<>();
+        try {
+            Metaserver.GetReplicationInfoResponse replInfo = client.getReplicationInfo(path);
+            if (replInfo != null && replInfo.getFilesCount() > 0) {
+                // 查找匹配路径的文件
+                for (Metaserver.ReplicationStatus fileStatus : replInfo.getFilesList()) {
+                    if (fileStatus.getPath().equals(path)) {
+                        // 遍历该文件的所有数据块
+                        for (Metaserver.BlockReplicationInfo blockInfo : fileStatus.getBlocksList()) {
+                            String blockId = String.valueOf(blockInfo.getBlockId());
+                            // 为每个副本位置创建ReplicaData
+                            for (String location : blockInfo.getLocationsList()) {
+                                ReplicaData replica = new ReplicaData();
+                                replica.id = blockId;
+                                replica.dsNode = location;
+                                // 生成 /dataserver-X/块ID 格式的路径
+                                String port = location.split(":")[1];
+                                int serverNum = Integer.parseInt(port) - 8000; // 8001->1, 8002->2, 8003->3, 8004->4
+                                replica.path = "/data" + serverNum + "/" + blockId;
+                                replicaDataList.add(replica);
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // 如果获取副本信息失败，继续返回基本信息
+            System.err.println("获取副本信息失败: " + e.getMessage());
+        }
+        statInfo1.setReplicaData(replicaDataList);
         return statInfo1;
     }
     /**
@@ -88,7 +122,21 @@ public class EFileSystem extends FileSystem{
         for (Metaserver.StatInfo statInfo : statInfos) {
             if (statInfo != null) {
                 StatInfo newStatInfo = new StatInfo();
-                BeanUtils.copyProperties(statInfo, newStatInfo);
+                newStatInfo.setPath(statInfo.getPath());
+                newStatInfo.setSize(statInfo.getSize());
+                newStatInfo.setMtime(statInfo.getMtime());
+                // 转换FileType枚举
+                newStatInfo.setType(convertProtoFileType(statInfo.getType()));
+                // 复制副本数据
+                List<ReplicaData> replicaDataList = new ArrayList<>();
+                for (Metaserver.ReplicaData protoReplica : statInfo.getReplicaDataList()) {
+                    ReplicaData replica = new ReplicaData();
+                    replica.setId(protoReplica.getId());
+                    replica.setDsNode(protoReplica.getDsNode());
+                    replica.setPath(protoReplica.getPath());
+                    replicaDataList.add(replica);
+                }
+                newStatInfo.setReplicaData(replicaDataList);
                 statInfos1.add(newStatInfo);
             }
         }
@@ -100,8 +148,11 @@ public class EFileSystem extends FileSystem{
      */
     public ClusterInfo getClusterInfo(){
         Metaserver.ClusterInfo clusterInfo = client.getClusterInfo();
-        ClusterInfo clusterInfo1=new ClusterInfo();
-        BeanUtils.copyProperties(clusterInfo,clusterInfo1);
+        ClusterInfo clusterInfo1 = new ClusterInfo();
+        
+        // 手动转换数据，因为 protobuf 类和自定义类结构不同
+        // TODO: 实现具体的转换逻辑
+        
         return clusterInfo1;
     }
 
@@ -110,5 +161,21 @@ public class EFileSystem extends FileSystem{
      */
     public MinFSClient getClient() {
         return client;
+    }
+
+    /**
+     * 转换proto FileType到domain FileType
+     */
+    private FileType convertProtoFileType(Metaserver.FileType protoType) {
+        switch (protoType) {
+            case Volume:
+                return FileType.Volume;
+            case File:
+                return FileType.File;
+            case Directory:
+                return FileType.Directory;
+            default:
+                return FileType.Unknown;
+        }
     }
 }

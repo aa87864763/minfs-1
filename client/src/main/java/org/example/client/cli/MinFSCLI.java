@@ -361,13 +361,11 @@ public class MinFSCLI {
                 System.out.println("类型: " + statInfo.getType());
                 System.out.println("大小: " + statInfo.getSize() + " 字节");
                 System.out.println("修改时间: " + statInfo.getMtime());
-                System.out.println("MD5: " + statInfo.getMd5());
                 
                 if (statInfo.getReplicaData() != null && !statInfo.getReplicaData().isEmpty()) {
                     System.out.println("副本信息:");
-                    for (int i = 0; i < statInfo.getReplicaData().size(); i++) {
-                        var replica = statInfo.getReplicaData().get(i);
-                        System.out.println("  副本" + (i+1) + ": " + replica.getDsNode() + " -> " + replica.getPath());
+                    for (var replica : statInfo.getReplicaData()) {
+                        System.out.println("  " + replica.toString());
                     }
                 }
                 
