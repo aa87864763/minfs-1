@@ -1,0 +1,16 @@
+minfs:
+  meta-server:
+    address: localhost
+    port: 9091  # 正确的端口
+  
+  etcd:
+    enabled: true
+    endpoints: http://10.212.217.58:2379
+    base-path: /minfs
+    meta-server-prefix: /minfs/metaserver/
+    leader-key: /minfs/leader
+
+  client:
+    connection-timeout: 5000
+    max-retry-attempts: 3
+    prefer-leader: true
