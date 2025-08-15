@@ -15,14 +15,16 @@ import (
 )
 
 type MetadataService struct {
-	db     *badger.DB
-	config *model.Config
+	db         *badger.DB
+	config     *model.Config
+	walService *WALService
 }
 
-func NewMetadataService(db *badger.DB, config *model.Config) *MetadataService {
+func NewMetadataService(db *badger.DB, config *model.Config, walService *WALService) *MetadataService {
 	return &MetadataService{
-		db:     db,
-		config: config,
+		db:         db,
+		config:     config,
+		walService: walService,
 	}
 }
 
@@ -813,4 +815,189 @@ func (ms *MetadataService) TraverseAllFiles(callback func(*pb.NodeInfo) error) e
 		
 		return nil
 	})
+}
+
+// UpdateBlockLocation 更新块位置信息，将旧地址替换为新地址
+func (ms *MetadataService) UpdateBlockLocation(blockID uint64, oldAddr, newAddr string) error {
+	// 1. 先写WAL日志（如果WAL服务可用）
+	if ms.walService != nil {
+		operation := &pb.UpdateBlockLocationOperation{
+			BlockId: blockID,
+			OldAddr: oldAddr,
+			NewAddr: newAddr,
+		}
+		_, err := ms.walService.AppendLogEntry(pb.WALOperationType_UPDATE_BLOCK_LOCATION, operation)
+		if err != nil {
+			return fmt.Errorf("failed to write WAL entry for block location update: %v", err)
+		}
+	}
+	
+	// 2. 执行实际的数据库更新
+	return ms.updateBlockLocationInDB(blockID, oldAddr, newAddr)
+}
+
+// updateBlockLocationInDB 在数据库中更新块位置信息（不写WAL）
+func (ms *MetadataService) updateBlockLocationInDB(blockID uint64, oldAddr, newAddr string) error {
+	return ms.db.Update(func(txn *badger.Txn) error {
+		// 需要遍历所有包含该块的文件，找到对应的块映射并更新
+		inodePrefix := []byte(model.PrefixInode)
+		opts := badger.DefaultIteratorOptions
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		
+		for it.Seek(inodePrefix); it.ValidForPrefix(inodePrefix); it.Next() {
+			item := it.Item()
+			
+			err := item.Value(func(val []byte) error {
+				var nodeInfo pb.NodeInfo
+				if err := proto.Unmarshal(val, &nodeInfo); err != nil {
+					return err
+				}
+				
+				// 只处理文件类型
+				if nodeInfo.Type != pb.FileType_File {
+					return nil
+				}
+				
+				// 检查这个文件的块映射
+				return ms.updateFileBlockLocation(txn, nodeInfo.Inode, blockID, oldAddr, newAddr)
+			})
+			
+			if err != nil {
+				return err
+			}
+		}
+		
+		return nil
+	})
+}
+
+// updateFileBlockLocation 更新单个文件的块位置信息
+func (ms *MetadataService) updateFileBlockLocation(txn *badger.Txn, inodeID, blockID uint64, oldAddr, newAddr string) error {
+	// 遍历该文件的所有块映射
+	prefix := fmt.Sprintf("%s%d/", model.PrefixBlock, inodeID)
+	opts := badger.DefaultIteratorOptions
+	it := txn.NewIterator(opts)
+	defer it.Close()
+	
+	for it.Seek([]byte(prefix)); it.ValidForPrefix([]byte(prefix)); it.Next() {
+		item := it.Item()
+		key := item.Key()
+		
+		var blockLocs pb.BlockLocations
+		err := item.Value(func(val []byte) error {
+			return proto.Unmarshal(val, &blockLocs)
+		})
+		if err != nil {
+			continue
+		}
+		
+		// 检查这个块是否是我们要更新的
+		if blockLocs.BlockId != blockID {
+			continue
+		}
+		
+		// 更新位置信息
+		updated := false
+		for i, location := range blockLocs.Locations {
+			if location == oldAddr {
+				blockLocs.Locations[i] = newAddr
+				updated = true
+				break
+			}
+		}
+		
+		// 如果有更新，保存回数据库
+		if updated {
+			data, err := proto.Marshal(&blockLocs)
+			if err != nil {
+				return fmt.Errorf("failed to marshal updated block locations: %v", err)
+			}
+			
+			err = txn.Set(key, data)
+			if err != nil {
+				return fmt.Errorf("failed to update block location in database: %v", err)
+			}
+			
+			return nil // 找到并更新了，可以返回
+		}
+	}
+	
+	return nil
+}
+
+// BlockLocationUpdate 块位置更新信息
+type BlockLocationUpdate struct {
+	BlockID uint64
+	OldAddr string
+	NewAddr string
+}
+
+// BatchUpdateBlockLocations 批量更新块位置信息
+func (ms *MetadataService) BatchUpdateBlockLocations(updates []BlockLocationUpdate) error {
+	// 1. 批量写WAL日志（如果WAL服务可用）
+	if ms.walService != nil {
+		for _, update := range updates {
+			operation := &pb.UpdateBlockLocationOperation{
+				BlockId: update.BlockID,
+				OldAddr: update.OldAddr,
+				NewAddr: update.NewAddr,
+			}
+			_, err := ms.walService.AppendLogEntry(pb.WALOperationType_UPDATE_BLOCK_LOCATION, operation)
+			if err != nil {
+				return fmt.Errorf("failed to write WAL entry for batch update of block %d: %v", update.BlockID, err)
+			}
+		}
+	}
+	
+	// 2. 执行实际的数据库更新
+	return ms.batchUpdateBlockLocationsInDB(updates)
+}
+
+// batchUpdateBlockLocationsInDB 在数据库中批量更新块位置信息（不写WAL）
+func (ms *MetadataService) batchUpdateBlockLocationsInDB(updates []BlockLocationUpdate) error {
+	return ms.db.Update(func(txn *badger.Txn) error {
+		for _, update := range updates {
+			err := ms.updateSingleBlockLocationInTxn(txn, update.BlockID, update.OldAddr, update.NewAddr)
+			if err != nil {
+				return fmt.Errorf("failed to update block %d location from %s to %s: %v", 
+					update.BlockID, update.OldAddr, update.NewAddr, err)
+			}
+		}
+		return nil
+	})
+}
+
+// updateSingleBlockLocationInTxn 在事务中更新单个块的位置信息
+func (ms *MetadataService) updateSingleBlockLocationInTxn(txn *badger.Txn, blockID uint64, oldAddr, newAddr string) error {
+	// 遍历所有包含该块的文件，找到对应的块映射并更新
+	inodePrefix := []byte(model.PrefixInode)
+	opts := badger.DefaultIteratorOptions
+	it := txn.NewIterator(opts)
+	defer it.Close()
+	
+	for it.Seek(inodePrefix); it.ValidForPrefix(inodePrefix); it.Next() {
+		item := it.Item()
+		
+		err := item.Value(func(val []byte) error {
+			var nodeInfo pb.NodeInfo
+			if err := proto.Unmarshal(val, &nodeInfo); err != nil {
+				return err
+			}
+			
+			// 只处理文件类型
+			if nodeInfo.Type != pb.FileType_File {
+				return nil
+			}
+			
+			// 检查这个文件的块映射
+			return ms.updateFileBlockLocation(txn, nodeInfo.Inode, blockID, oldAddr, newAddr)
+		})
+		
+		if err != nil {
+			return err
+		}
+	}
+	
+	return nil
 }

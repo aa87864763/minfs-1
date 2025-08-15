@@ -77,7 +77,7 @@ func main() {
 	walService := service.NewWALService(db, config, currentNodeID)
 	
 	// 初始化服务层
-	metadataService := service.NewMetadataService(db, config)
+	metadataService := service.NewMetadataService(db, config, walService)
 	clusterService := service.NewClusterService(config)
 	schedulerService := service.NewSchedulerService(config, clusterService, metadataService)
 	
@@ -205,7 +205,8 @@ func initBadgerDB(dbDir string) (*badger.DB, error) {
 
 // initRootDirectory 初始化根目录
 func initRootDirectory(db *badger.DB, config *model.Config) error {
-	metadataService := service.NewMetadataService(db, config)
+	// 根目录初始化不需要WAL服务，传递nil
+	metadataService := service.NewMetadataService(db, config, nil)
 	
 	// 检查根目录是否存在
 	_, err := metadataService.GetNodeInfo("/")

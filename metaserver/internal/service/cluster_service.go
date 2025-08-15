@@ -116,6 +116,18 @@ func (cs *ClusterService) checkDataServerHealth() {
 			ds.MarkUnhealthy()
 			log.Printf("DataServer %s marked as unhealthy (last heartbeat: %v)", id, lastHeartbeat)
 		}
+		
+		// 检查是否应该标记为永久宕机
+		if !isHealthy && !ds.IsPermanentlyDownStatus() {
+			unhealthyDuration := ds.GetUnhealthyDuration()
+			if unhealthyDuration > cs.config.Cluster.PermanentDownThreshold {
+				ds.MarkPermanentlyDown()
+				log.Printf("DataServer %s marked as permanently down (unhealthy for %v)", id, unhealthyDuration)
+				
+				// 触发副本重分布
+				cs.triggerReplicaRedistribution(id, ds.Addr)
+			}
+		}
 	}
 }
 
@@ -136,7 +148,15 @@ func (cs *ClusterService) ProcessHeartbeat(req *pb.HeartbeatRequest) (*pb.Heartb
 	}
 	
 	// 更新状态和块报告
+	wasUnhealthy := !ds.IsHealthy
 	ds.UpdateStatus(req.BlockCount, req.FreeSpace, req.TotalCapacity)
+	
+	// 如果节点从不健康状态恢复，重置永久宕机标志
+	if wasUnhealthy {
+		ds.RecoverToHealthy()
+		log.Printf("DataServer %s recovered to healthy state", req.DataserverId)
+	}
+	
 	newBlocks := ds.UpdateReportedBlocks(req.BlockIdsReport)
 	cs.mutex.Unlock()
 	
@@ -490,4 +510,39 @@ func (cs *ClusterService) IsBlockReportedByServer(blockID uint64, serverID strin
 	}
 	
 	return ds.HasBlock(blockID)
+}
+
+// triggerReplicaRedistribution 触发副本重分布
+func (cs *ClusterService) triggerReplicaRedistribution(serverID, serverAddr string) {
+	// 这个方法将被SchedulerService调用，这里先记录日志
+	log.Printf("Triggering replica redistribution for permanently down server: %s (%s)", serverID, serverAddr)
+	// 实际的重分布逻辑将在SchedulerService中实现
+}
+
+// GetPermanentlyDownServers 获取所有永久宕机的服务器
+func (cs *ClusterService) GetPermanentlyDownServers() []*model.DataServerInfo {
+	cs.mutex.RLock()
+	defer cs.mutex.RUnlock()
+	
+	var downServers []*model.DataServerInfo
+	for _, ds := range cs.dataServers {
+		if ds.IsPermanentlyDownStatus() {
+			downServers = append(downServers, ds)
+		}
+	}
+	
+	return downServers
+}
+
+// IsServerPermanentlyDown 检查特定服务器是否永久宕机
+func (cs *ClusterService) IsServerPermanentlyDown(addr string) bool {
+	cs.mutex.RLock()
+	defer cs.mutex.RUnlock()
+	
+	for _, ds := range cs.dataServers {
+		if ds.Addr == addr {
+			return ds.IsPermanentlyDownStatus()
+		}
+	}
+	return false
 }

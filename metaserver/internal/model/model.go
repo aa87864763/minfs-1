@@ -20,8 +20,9 @@ type Config struct {
 	} `yaml:"database"`
 	
 	Cluster struct {
-		DefaultReplication int           `yaml:"default_replication"`
-		HeartbeatTimeout   time.Duration `yaml:"heartbeat_timeout"`
+		DefaultReplication      int           `yaml:"default_replication"`
+		HeartbeatTimeout        time.Duration `yaml:"heartbeat_timeout"`
+		PermanentDownThreshold  time.Duration `yaml:"permanent_down_threshold"`
 	} `yaml:"cluster"`
 	
 	Etcd struct {
@@ -31,9 +32,13 @@ type Config struct {
 	} `yaml:"etcd"`
 	
 	Scheduler struct {
-		FSCKInterval time.Duration `yaml:"fsck_interval"`
-		GCInterval   time.Duration `yaml:"gc_interval"`
-		BlockSize    uint64        `yaml:"block_size"`
+		FSCKInterval          time.Duration `yaml:"fsck_interval"`
+		GCInterval            time.Duration `yaml:"gc_interval"`
+		BlockSize             uint64        `yaml:"block_size"`
+		FSCKWorkers           int           `yaml:"fsck_workers"`
+		RepairWorkers         int           `yaml:"repair_workers"`
+		RepairQueueSize       int           `yaml:"repair_queue_size"`
+		MaxConcurrentRepairs  int           `yaml:"max_concurrent_repairs"`
 	} `yaml:"scheduler"`
 	
 	Logging struct {
@@ -70,6 +75,10 @@ type DataServerInfo struct {
 	
 	// 用于调度算法的轮询计数器
 	RoundRobinIndex int
+	
+	// 节点宕机相关
+	UnhealthyStartTime *time.Time // 节点变为不健康的开始时间
+	IsPermanentlyDown  bool       // 是否被标记为永久宕机
 	
 	// 线程安全锁
 	mutex sync.RWMutex
@@ -130,6 +139,12 @@ func (ds *DataServerInfo) GetStatus() (blockCount, freeSpace, totalCapacity uint
 func (ds *DataServerInfo) MarkUnhealthy() {
 	ds.mutex.Lock()
 	defer ds.mutex.Unlock()
+	
+	if ds.IsHealthy {
+		// 第一次标记为不健康，记录开始时间
+		now := time.Now()
+		ds.UnhealthyStartTime = &now
+	}
 	ds.IsHealthy = false
 }
 
@@ -144,6 +159,41 @@ func (ds *DataServerInfo) GetReportedBlocks() map[uint64]bool {
 		blocks[blockID] = exists
 	}
 	return blocks
+}
+
+// MarkPermanentlyDown 标记节点为永久宕机
+func (ds *DataServerInfo) MarkPermanentlyDown() {
+	ds.mutex.Lock()
+	defer ds.mutex.Unlock()
+	ds.IsPermanentlyDown = true
+}
+
+// IsPermanentlyDownStatus 检查节点是否被标记为永久宕机
+func (ds *DataServerInfo) IsPermanentlyDownStatus() bool {
+	ds.mutex.RLock()
+	defer ds.mutex.RUnlock()
+	return ds.IsPermanentlyDown
+}
+
+// GetUnhealthyDuration 获取节点不健康的持续时间
+func (ds *DataServerInfo) GetUnhealthyDuration() time.Duration {
+	ds.mutex.RLock()
+	defer ds.mutex.RUnlock()
+	
+	if ds.UnhealthyStartTime == nil {
+		return 0
+	}
+	return time.Since(*ds.UnhealthyStartTime)
+}
+
+// RecoverToHealthy 恢复节点为健康状态
+func (ds *DataServerInfo) RecoverToHealthy() {
+	ds.mutex.Lock()
+	defer ds.mutex.Unlock()
+	
+	ds.IsHealthy = true
+	ds.UnhealthyStartTime = nil
+	ds.IsPermanentlyDown = false
 }
 
 // BlockMapping 表示数据块在各个 DataServer 上的分布
@@ -172,6 +222,24 @@ type Command struct {
 	Action   string   // 动作类型: "DELETE_BLOCK" 或 "COPY_BLOCK"
 	BlockID  uint64   // 目标块 ID
 	Targets  []string // 目标地址列表
+}
+
+// RepairTask 修复任务结构体
+type RepairTask struct {
+	BlockID           uint64   // 块ID
+	SourceAddr        string   // 源地址
+	TargetAddrs       []string // 目标地址列表
+	IsReplacement     bool     // 是否为替换操作
+	ReplacedAddr      string   // 被替换的地址
+	ExpectedLocations []string // 期望位置列表
+	Priority          int      // 优先级 (1=高, 2=中, 3=低)
+}
+
+// FSCKCheckTask FSCK检查任务
+type FSCKCheckTask struct {
+	BlockID           uint64   // 块ID
+	ExpectedLocations []string // 期望位置
+	ActualLocations   []string // 实际位置
 }
 
 // BadgerDB Key Prefixes

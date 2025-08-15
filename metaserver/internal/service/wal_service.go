@@ -297,6 +297,26 @@ func (ws *WALService) ReplayLogEntry(entry *pb.LogEntry, metadataService *Metada
 		log.Printf("WAL Replay: Successfully replayed FinalizeWrite %s", op.Path)
 		return nil
 		
+	case pb.WALOperationType_UPDATE_BLOCK_LOCATION:
+		var op pb.UpdateBlockLocationOperation
+		if err := json.Unmarshal(entry.Data, &op); err != nil {
+			return fmt.Errorf("failed to unmarshal UpdateBlockLocationOperation: %v", err)
+		}
+		
+		log.Printf("WAL Replay: UpdateBlockLocation block=%d from %s to %s", 
+			op.BlockId, op.OldAddr, op.NewAddr)
+		
+		// 执行块位置更新操作（直接调用数据库方法，避免再次写WAL）
+		err := metadataService.updateBlockLocationInDB(op.BlockId, op.OldAddr, op.NewAddr)
+		if err != nil {
+			log.Printf("WAL Replay: Failed to update block location for block %d: %v", op.BlockId, err)
+			return err
+		}
+		
+		log.Printf("WAL Replay: Successfully updated block %d location from %s to %s", 
+			op.BlockId, op.OldAddr, op.NewAddr)
+		return nil
+		
 	default:
 		return fmt.Errorf("unknown WAL operation type: %v", entry.Operation)
 	}
