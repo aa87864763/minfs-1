@@ -608,8 +608,36 @@ func (ms *MetadataService) deleteKeysWithPrefixInTx(txn *badger.Txn, prefix stri
 	return nil
 }
 
-// SetBlockMapping 设置文件块映射
+// SetBlockMapping 设置文件块映射（带WAL日志）
 func (ms *MetadataService) SetBlockMapping(inodeID uint64, blockIndex uint64, blockLocs *pb.BlockLocations) error {
+	// 1. 先写WAL日志
+	if ms.walService != nil {
+		// 构建操作数据
+		operation := &pb.SetBlockMappingOperation{
+			InodeId:    inodeID,
+			BlockIndex: blockIndex,
+			BlockLocs:  blockLocs,
+		}
+
+		// 写入日志
+		entry, err := ms.walService.AppendLogEntry(pb.WALOperationType_SET_BLOCK_MAPPING, operation)
+		if err != nil {
+			return fmt.Errorf("failed to write WAL for SetBlockMapping: %v", err)
+		}
+
+		// 如果是Leader，需要将此日志同步给Followers
+		if entry != nil && ms.walService.IsLeader() {
+			// 异步同步，不阻塞主流程
+			go ms.walService.SyncToFollowers(entry)
+		}
+	}
+
+	// 2. 再执行数据库更新
+	return ms.setBlockMappingInDB(inodeID, blockIndex, blockLocs)
+}
+
+// setBlockMappingInDB 设置文件块映射（仅数据库操作，不写WAL）
+func (ms *MetadataService) setBlockMappingInDB(inodeID uint64, blockIndex uint64, blockLocs *pb.BlockLocations) error {
 	return ms.db.Update(func(txn *badger.Txn) error {
 		data, err := proto.Marshal(blockLocs)
 		if err != nil {

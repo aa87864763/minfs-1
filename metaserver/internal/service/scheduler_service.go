@@ -170,9 +170,6 @@ func (ss *SchedulerService) runFSCK() {
 	underReplicatedBlocks := 0
 	redistributedBlocks := 0
 	
-	// 清理过期的修复任务
-	ss.cleanupExpiredRepairTasks()
-	
 	// 检查集群健康状况
 	healthyServers := ss.clusterService.GetHealthyDataServers()
 	if len(healthyServers) < ss.config.Cluster.DefaultReplication {
@@ -701,13 +698,6 @@ func (ss *SchedulerService) getRepairTask(blockID uint64, targetAddr string) *mo
 	return nil
 }
 
-// cleanupExpiredRepairTasks 清理超时的修复任务 (Worker Pool架构中暂时简化，任务快速处理)
-func (ss *SchedulerService) cleanupExpiredRepairTasks() {
-	// Worker Pool架构中，任务处理很快，暂时简化这个函数
-	// 如果需要可以后续添加基于时间戳的清理逻辑
-	log.Printf("Cleanup repair tasks: Worker Pool handles tasks quickly, cleanup simplified")
-}
-
 // OnBlockReplicationComplete 当DataServer完成块复制时调用
 func (ss *SchedulerService) OnBlockReplicationComplete(blockID uint64, targetAddr string, success bool) {
 	if success {
@@ -728,6 +718,7 @@ func (ss *SchedulerService) OnBlockReplicationComplete(blockID uint64, targetAdd
 		ss.removeRepairTask(blockID, targetAddr)
 		log.Printf("Block %d replication to %s completed successfully", blockID, targetAddr)
 	} else {
+		ss.removeRepairTask(blockID, targetAddr)
 		log.Printf("Block %d replication to %s failed", blockID, targetAddr)
 		// 失败的情况下，可以选择重新调度或保持任务状态等待重试
 	}

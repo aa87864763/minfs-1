@@ -90,6 +90,7 @@ func main() {
 	
 	// 设置Leader Election和WAL服务的相互引用
 	leaderElection.SetWALService(walService)
+	walService.SetLeaderElection(leaderElection)
 	clusterService.SetLeaderElection(leaderElection) // 传递选举服务
 	
 	log.Printf("Node %s initialized and ready to start", currentNodeID)

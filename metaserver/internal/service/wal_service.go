@@ -33,6 +33,9 @@ type WALService struct {
 	// 用于同步到followers
 	followers     map[string]*FollowerClient
 	followerMutex sync.RWMutex
+	
+	// Leader选举引用
+	leaderElection *LeaderElection
 }
 
 // FollowerClient 表示一个follower连接
@@ -228,7 +231,23 @@ func (ws *WALService) ReplayLogEntry(entry *pb.LogEntry, metadataService *Metada
 		if err := json.Unmarshal(entry.Data, &op); err != nil {
 			return fmt.Errorf("failed to unmarshal CreateNodeOperation: %v", err)
 		}
-		return metadataService.CreateNode(op.Path, op.Type)
+		
+		log.Printf("WAL Replay: CreateNode %s (type: %v)", op.Path, op.Type)
+		
+		// 在回放时，如果文件已存在就跳过，不报错
+		err := metadataService.CreateNode(op.Path, op.Type)
+		if err != nil && err.Error() == fmt.Sprintf("path already exists: %s", op.Path) {
+			log.Printf("WAL Replay: CreateNode %s already exists, skipping", op.Path)
+			return nil
+		}
+		
+		if err != nil {
+			log.Printf("WAL Replay: Failed to create node %s: %v", op.Path, err)
+			return err
+		}
+		
+		log.Printf("WAL Replay: Successfully created node %s", op.Path)
+		return nil
 		
 	case pb.WALOperationType_DELETE_NODE:
 		var op pb.DeleteNodeOperation
@@ -267,28 +286,37 @@ func (ws *WALService) ReplayLogEntry(entry *pb.LogEntry, metadataService *Metada
 			op.Path, op.Inode, op.Size, op.Md5, len(op.BlockLocations))
 		
 		// 检查文件是否存在，如果不存在则先创建基本文件元数据
-		_, err := metadataService.GetNodeInfo(op.Path)
+		nodeInfo, err := metadataService.GetNodeInfo(op.Path)
+		var actualInodeID uint64
 		if err != nil {
 			// 文件不存在，先创建基本文件元数据
-			log.Printf("WAL Replay: File %s does not exist, creating basic file metadata first", op.Path)
+			log.Printf("WAL Replay: File %s does not exist (error: %v), creating basic file metadata for inode %d", op.Path, err, op.Inode)
 			err = ws.createFileForReplay(metadataService, op.Path, op.Inode)
 			if err != nil {
 				log.Printf("WAL Replay: Failed to create file metadata for %s: %v", op.Path, err)
 				return err
 			}
+			log.Printf("WAL Replay: Successfully created file metadata for %s with inode %d", op.Path, op.Inode)
+			actualInodeID = op.Inode
+		} else {
+			log.Printf("WAL Replay: File %s already exists with inode %d (expected inode %d)", op.Path, nodeInfo.Inode, op.Inode)
+			// 使用实际的inode ID，而不是WAL中记录的
+			actualInodeID = nodeInfo.Inode
 		}
 		
-		// 先恢复块映射
+		// 先恢复块映射（使用实际的inode ID）
+		log.Printf("WAL Replay: Setting block mappings for inode %d (originally %d)", actualInodeID, op.Inode)
 		for i, blockMapping := range op.BlockLocations {
-			err := metadataService.SetBlockMapping(op.Inode, uint64(i), blockMapping)
+			err := metadataService.setBlockMappingInDB(actualInodeID, uint64(i), blockMapping)
 			if err != nil {
-				log.Printf("WAL Replay: Failed to set block mapping for %s: %v", op.Path, err)
+				log.Printf("WAL Replay: Failed to set block mapping for %s (inode %d): %v", op.Path, actualInodeID, err)
 				return err
 			}
 		}
 		
-		// 执行FinalizeWrite操作
-		err = metadataService.FinalizeWrite(op.Path, op.Inode, uint64(op.Size), op.Md5)
+		// 执行FinalizeWrite操作（使用实际的inode ID）
+		log.Printf("WAL Replay: Finalizing write for %s with inode %d", op.Path, actualInodeID)
+		err = metadataService.FinalizeWrite(op.Path, actualInodeID, uint64(op.Size), op.Md5)
 		if err != nil {
 			log.Printf("WAL Replay: Failed to finalize write for %s: %v", op.Path, err)
 			return err
@@ -315,6 +343,26 @@ func (ws *WALService) ReplayLogEntry(entry *pb.LogEntry, metadataService *Metada
 		
 		log.Printf("WAL Replay: Successfully updated block %d location from %s to %s", 
 			op.BlockId, op.OldAddr, op.NewAddr)
+		return nil
+		
+	case pb.WALOperationType_SET_BLOCK_MAPPING:
+		var op pb.SetBlockMappingOperation
+		if err := json.Unmarshal(entry.Data, &op); err != nil {
+			return fmt.Errorf("failed to unmarshal SetBlockMappingOperation: %v", err)
+		}
+		
+		log.Printf("WAL Replay: SetBlockMapping inode=%d, index=%d", op.InodeId, op.BlockIndex)
+		
+		// 执行块映射设置操作（直接调用数据库方法，避免再次写WAL）
+		err := metadataService.setBlockMappingInDB(op.InodeId, op.BlockIndex, op.BlockLocs)
+		if err != nil {
+			log.Printf("WAL Replay: Failed to set block mapping for inode %d index %d: %v", 
+				op.InodeId, op.BlockIndex, err)
+			return err
+		}
+		
+		log.Printf("WAL Replay: Successfully set block mapping for inode %d index %d", 
+			op.InodeId, op.BlockIndex)
 		return nil
 		
 	default:
@@ -516,6 +564,19 @@ func (ws *WALService) Close() error {
 	return nil
 }
 
+// SetLeaderElection 设置Leader选举引用
+func (ws *WALService) SetLeaderElection(le *LeaderElection) {
+	ws.leaderElection = le
+}
+
+// IsLeader 检查当前节点是否是Leader
+func (ws *WALService) IsLeader() bool {
+	if ws.leaderElection == nil {
+		return false
+	}
+	return ws.leaderElection.IsLeader()
+}
+
 // createFileForReplay 在WAL回放时创建文件的基本元数据
 func (ws *WALService) createFileForReplay(metadataService *MetadataService, path string, inodeID uint64) error {
 	// 导入必要的包
@@ -525,12 +586,15 @@ func (ws *WALService) createFileForReplay(metadataService *MetadataService, path
 		path = "/"
 	}
 	
+	log.Printf("WAL Replay: createFileForReplay attempting to create file %s with inode %d", path, inodeID)
+	
 	return metadataService.db.Update(func(txn *badger.Txn) error {
 		// 检查路径是否已存在
-		pathKey := "path:" + path
+		pathKey := model.PrefixPath + path
 		_, err := txn.Get([]byte(pathKey))
 		if err == nil {
 			// 路径已存在，不需要创建
+			log.Printf("WAL Replay: createFileForReplay - path %s already exists, skipping creation", path)
 			return nil
 		}
 		if err != badger.ErrKeyNotFound {
@@ -540,7 +604,7 @@ func (ws *WALService) createFileForReplay(metadataService *MetadataService, path
 		// 检查父目录是否存在
 		parentPath := filepath.Dir(path)
 		if parentPath != "/" {
-			parentKey := "path:" + parentPath
+			parentKey := model.PrefixPath + parentPath
 			_, err := txn.Get([]byte(parentKey))
 			if err == badger.ErrKeyNotFound {
 				return fmt.Errorf("parent directory does not exist: %s", parentPath)
@@ -566,7 +630,7 @@ func (ws *WALService) createFileForReplay(metadataService *MetadataService, path
 			return err
 		}
 		
-		inodeKey := fmt.Sprintf("inode:%d", inodeID)
+		inodeKey := fmt.Sprintf("%s%d", model.PrefixInode, inodeID)
 		if err := txn.Set([]byte(inodeKey), data); err != nil {
 			return err
 		}

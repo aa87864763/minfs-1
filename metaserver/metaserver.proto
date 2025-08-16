@@ -248,6 +248,7 @@ enum WALOperationType {
     UPDATE_NODE = 2;           // 更新节点信息
     FINALIZE_WRITE = 3;        // 完成写入操作
     UPDATE_BLOCK_LOCATION = 4; // 更新块位置信息
+    SET_BLOCK_MAPPING = 5;     // 设置文件块映射关系
 }
 
 // WAL日志条目 (用于主从同步)
@@ -292,4 +293,11 @@ message UpdateBlockLocationOperation {
     uint64 block_id = 1;   // 块ID
     string old_addr = 2;   // 原地址
     string new_addr = 3;   // 新地址
+}
+
+// 设置块映射关系的数据
+message SetBlockMappingOperation {
+    uint64 inode_id = 1;       // 文件inode ID
+    uint64 block_index = 2;    // 块索引
+    BlockLocations block_locs = 3;  // 块位置信息
 }
