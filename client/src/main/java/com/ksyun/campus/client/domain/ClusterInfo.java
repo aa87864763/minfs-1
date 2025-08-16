@@ -1,4 +1,4 @@
-package org.example.client.domain;
+package com.ksyun.campus.client.domain;
 
 import java.util.List;
 

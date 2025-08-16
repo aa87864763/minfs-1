@@ -1,4 +1,4 @@
-package org.example.client.discovery;
+package com.ksyun.campus.client.discovery;
 
 import io.etcd.jetcd.Client;
 import io.etcd.jetcd.kv.PutResponse;

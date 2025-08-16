@@ -1,4 +1,4 @@
-package org.example.client.client;
+package com.ksyun.campus.client.client;
 
 import com.google.protobuf.ByteString;
 import dfs_project.*;
@@ -7,7 +7,7 @@ import io.grpc.ManagedChannelBuilder;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
-import org.example.client.discovery.EtcdServiceDiscovery;
+import com.ksyun.campus.client.discovery.EtcdServiceDiscovery;
 
 import java.io.*;
 

@@ -1,7 +1,7 @@
-package org.example.client;
+package com.ksyun.campus.client;
 
 import dfs_project.Metaserver;
-import org.example.client.client.MinFSClient;
+import com.ksyun.campus.client.client.MinFSClient;
 import java.security.MessageDigest;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -46,6 +46,9 @@ public class FSOutputStream extends OutputStream {
 
         // 直接写入缓冲区，不管容量限制，让缓冲区自动扩展
         buffer.write(b, off, len);
+        
+        // 不要立即写入，等到close时一次性写入
+        // 这样符合 create -> write -> close 的三步曲逻辑
     }
 
     @Override
@@ -63,6 +66,11 @@ public class FSOutputStream extends OutputStream {
             // 采用Golang客户端策略：一次性写入所有数据
             writeFileAtOnce();
             finalized = true;
+            // 打印写入成功信息
+            System.out.println("[SDK] 写入成功: " + path + " (" + buffer.totalSize() + " 字节)");
+        } catch (Exception e) {
+            System.err.println("[SDK] 写入失败: " + path + " - " + e.getMessage());
+            throw e;
         } finally {
             buffer.clear();
         }

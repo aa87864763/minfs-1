@@ -44,7 +44,7 @@
           <finalName>easyClient-1.0</finalName>
           <archive>
             <manifest>
-              <mainClass>org.example.client.cli.MinFSCLI</mainClass>
+              <mainClass>com.ksyun.campus.client.cli.MinFSCLI</mainClass>
             </manifest>
           </archive>
         </configuration>
@@ -62,7 +62,7 @@
               <finalName>minfs-client-${version}</finalName>
               <transformers>
                 <transformer>
-                  <mainClass>org.example.client.cli.MinFSCLI</mainClass>
+                  <mainClass>com.ksyun.campus.client.cli.MinFSCLI</mainClass>
                 </transformer>
                 <transformer />
               </transformers>

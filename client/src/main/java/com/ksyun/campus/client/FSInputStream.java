@@ -1,7 +1,7 @@
-package org.example.client;
+package com.ksyun.campus.client;
 
 import dfs_project.Metaserver;
-import org.example.client.client.MinFSClient;
+import com.ksyun.campus.client.client.MinFSClient;
 
 import java.io.IOException;
 import java.io.InputStream;
