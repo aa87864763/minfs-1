@@ -1904,6 +1904,7 @@ type CreateNodeOperation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
 	Type          FileType               `protobuf:"varint,2,opt,name=type,proto3,enum=dfs_project.FileType" json:"type,omitempty"`
+	InodeId       uint64                 `protobuf:"varint,3,opt,name=inode_id,json=inodeId,proto3" json:"inode_id,omitempty"` // 实际分配的inode ID
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1950,6 +1951,13 @@ func (x *CreateNodeOperation) GetType() FileType {
 		return x.Type
 	}
 	return FileType_Unknown
+}
+
+func (x *CreateNodeOperation) GetInodeId() uint64 {
+	if x != nil {
+		return x.InodeId
+	}
+	return 0
 }
 
 // 删除节点操作的数据
@@ -2389,10 +2397,11 @@ const file_metaserver_proto_rawDesc = "" +
 	"\ttimestamp\x18\x02 \x01(\x03R\ttimestamp\x12;\n" +
 	"\toperation\x18\x03 \x01(\x0e2\x1d.dfs_project.WALOperationTypeR\toperation\x12\x12\n" +
 	"\x04data\x18\x04 \x01(\fR\x04data\x12\x1a\n" +
-	"\bchecksum\x18\x05 \x01(\tR\bchecksum\"T\n" +
+	"\bchecksum\x18\x05 \x01(\tR\bchecksum\"o\n" +
 	"\x13CreateNodeOperation\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12)\n" +
-	"\x04type\x18\x02 \x01(\x0e2\x15.dfs_project.FileTypeR\x04type\"G\n" +
+	"\x04type\x18\x02 \x01(\x0e2\x15.dfs_project.FileTypeR\x04type\x12\x19\n" +
+	"\binode_id\x18\x03 \x01(\x04R\ainodeId\"G\n" +
 	"\x13DeleteNodeOperation\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x1c\n" +
 	"\trecursive\x18\x02 \x01(\bR\trecursive\"S\n" +

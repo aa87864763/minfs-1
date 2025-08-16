@@ -955,10 +955,12 @@ func (ss *SchedulerService) processFSCKCheckTask(task *model.FSCKCheckTask, work
 		}
 	}
 	
-	// 检查孤儿块
+	// 检查孤儿块并清理
 	for _, location := range actualLocations {
 		if !ss.isLocationInExpected(location, expectedLocations) {
-			log.Printf("Worker %d: Found orphan block %d at %s", workerID, blockID, location)
+			log.Printf("Worker %d: Found orphan block %d at %s, scheduling deletion", workerID, blockID, location)
+			// 立即删除这个孤儿副本
+			ss.ScheduleBlockDeletion(blockID, []string{location})
 		}
 	}
 }

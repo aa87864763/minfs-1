@@ -232,21 +232,45 @@ func (ws *WALService) ReplayLogEntry(entry *pb.LogEntry, metadataService *Metada
 			return fmt.Errorf("failed to unmarshal CreateNodeOperation: %v", err)
 		}
 		
-		log.Printf("WAL Replay: CreateNode %s (type: %v)", op.Path, op.Type)
+		log.Printf("WAL Replay: CreateNode %s (type: %v, expected inode: %d)", op.Path, op.Type, op.InodeId)
 		
-		// 在回放时，如果文件已存在就跳过，不报错
-		err := metadataService.CreateNode(op.Path, op.Type)
-		if err != nil && err.Error() == fmt.Sprintf("path already exists: %s", op.Path) {
-			log.Printf("WAL Replay: CreateNode %s already exists, skipping", op.Path)
-			return nil
+		// 检查文件是否已存在
+		existingNodeInfo, err := metadataService.GetNodeInfo(op.Path)
+		if err == nil {
+			// 文件已存在，检查inode ID是否一致
+			if existingNodeInfo.Inode == op.InodeId {
+				log.Printf("WAL Replay: CreateNode %s already exists with correct inode %d, skipping", op.Path, op.InodeId)
+				return nil
+			} else {
+				log.Printf("WAL Replay: CreateNode %s already exists but with different inode %d (expected %d)", 
+					op.Path, existingNodeInfo.Inode, op.InodeId)
+				// 这种情况下我们接受现有的inode ID，但记录警告
+				return nil
+			}
 		}
 		
+		// 文件不存在，需要创建
+		// TODO: 理想情况下应该创建具有指定inode ID的文件，但当前CreateNode不支持
+		// 目前先创建文件，然后验证inode ID
+		err = metadataService.CreateNode(op.Path, op.Type)
 		if err != nil {
 			log.Printf("WAL Replay: Failed to create node %s: %v", op.Path, err)
 			return err
 		}
 		
-		log.Printf("WAL Replay: Successfully created node %s", op.Path)
+		// 验证创建的文件是否有正确的inode ID
+		newNodeInfo, err := metadataService.GetNodeInfo(op.Path)
+		if err != nil {
+			log.Printf("WAL Replay: Failed to get node info for %s: %v", op.Path, err)
+			return err
+		}
+		
+		if newNodeInfo.Inode != op.InodeId {
+			log.Printf("WAL Replay: WARNING - Created node %s with inode %d, but WAL expected %d", 
+				op.Path, newNodeInfo.Inode, op.InodeId)
+		}
+		
+		log.Printf("WAL Replay: Successfully created node %s with inode %d", op.Path, newNodeInfo.Inode)
 		return nil
 		
 	case pb.WALOperationType_DELETE_NODE:

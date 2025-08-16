@@ -92,21 +92,29 @@ func (h *MetaServerHandler) CreateNode(ctx context.Context, req *pb.CreateNodeRe
 		return &pb.SimpleResponse{Success: false}, fmt.Errorf("only leader can handle write operations")
 	}
 	
-	// 1. 创建WAL日志条目
-	walEntry, err := h.createWALEntry(pb.WALOperationType_CREATE_NODE, &pb.CreateNodeOperation{
-		Path: path,
-		Type: req.Type,
-	})
-	if err != nil {
-		log.Printf("CreateNode: Failed to create WAL entry: %v", err)
-		return &pb.SimpleResponse{Success: false}, err
-	}
-	
-	// 2. 执行实际的元数据操作
-	err = h.metadataService.CreateNode(path, req.Type)
+	// 1. 先执行实际的元数据操作，获得确定的inode ID
+	err := h.metadataService.CreateNode(path, req.Type)
 	if err != nil {
 		log.Printf("CreateNode error: %v", err)
 		return &pb.SimpleResponse{Success: false}, err
+	}
+	
+	// 2. 获取创建后的文件信息（包含实际的inode ID）
+	nodeInfo, err := h.metadataService.GetNodeInfo(path)
+	if err != nil {
+		log.Printf("CreateNode: Failed to get node info: %v", err)
+		return &pb.SimpleResponse{Success: false}, err
+	}
+	
+	// 3. 使用实际的inode ID创建WAL日志条目
+	walEntry, err := h.createWALEntry(pb.WALOperationType_CREATE_NODE, &pb.CreateNodeOperation{
+		Path:    path,
+		Type:    req.Type,
+		InodeId: nodeInfo.Inode,  // 包含实际的inode ID
+	})
+	if err != nil {
+		log.Printf("CreateNode: Failed to create WAL entry: %v", err)
+		// 虽然WAL写入失败，但文件已创建，继续执行
 	}
 	
 	// 3. 同步WAL到followers
@@ -237,30 +245,32 @@ func (h *MetaServerHandler) GetBlockLocations(ctx context.Context, req *pb.GetBl
 				return nil, fmt.Errorf("only leader can handle write operations")
 			}
 			
-			// 1. 创建WAL日志条目
-			walEntry, err := h.createWALEntry(pb.WALOperationType_CREATE_NODE, &pb.CreateNodeOperation{
-				Path: path,
-				Type: pb.FileType_File,
-			})
-			if err != nil {
-				log.Printf("GetBlockLocations: Failed to create WAL entry: %v", err)
-				return nil, fmt.Errorf("failed to create WAL entry: %v", err)
-			}
-			
-			// 2. 执行实际的元数据操作
+			// 1. 先执行实际的元数据操作，获得确定的inode ID
 			err = h.metadataService.CreateNode(path, pb.FileType_File)
 			if err != nil {
 				return nil, err
 			}
 			
-			// 3. 同步WAL到followers
-			if walEntry != nil {
-				go h.syncWALToFollowers(walEntry)
-			}
-			
+			// 2. 获取创建后的文件信息（包含实际的inode ID）
 			nodeInfo, err = h.metadataService.GetNodeInfo(path)
 			if err != nil {
 				return nil, err
+			}
+			
+			// 3. 使用实际的inode ID创建WAL日志条目
+			walEntry, err := h.createWALEntry(pb.WALOperationType_CREATE_NODE, &pb.CreateNodeOperation{
+				Path:    path,
+				Type:    pb.FileType_File,
+				InodeId: nodeInfo.Inode,  // 包含实际的inode ID
+			})
+			if err != nil {
+				log.Printf("GetBlockLocations: Failed to create WAL entry: %v", err)
+				// 虽然WAL写入失败，但文件已创建，继续执行
+			}
+			
+			// 4. 同步WAL到followers
+			if walEntry != nil {
+				go h.syncWALToFollowers(walEntry)
 			}
 		} else {
 			return nil, fmt.Errorf("file not found: %s", path)

@@ -264,6 +264,7 @@ message LogEntry {
 message CreateNodeOperation {
     string path = 1;
     FileType type = 2;
+    uint64 inode_id = 3;  // 实际分配的inode ID
 }
 
 // 删除节点操作的数据
