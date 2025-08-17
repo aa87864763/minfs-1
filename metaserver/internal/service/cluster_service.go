@@ -3,7 +3,6 @@ package service
 import (
 	"fmt"
 	"log"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -230,41 +229,44 @@ func (cs *ClusterService) GetAllDataServers() []*model.DataServerInfo {
 	return servers
 }
 
-// SelectDataServersForWrite 为写入操作选择 DataServer (选择块数最少的服务器)
-func (cs *ClusterService) SelectDataServersForWrite(replicationCount int) ([]*model.DataServerInfo, error) {
+// SelectDataServersForThreeReplica 为三副本存储选择服务器（全局负载均衡）
+func (cs *ClusterService) SelectDataServersForThreeReplica(totalPhysicalBlocks int) ([]string, error) {
 	healthyServers := cs.GetHealthyDataServers()
-	
-	if len(healthyServers) < replicationCount {
-		return nil, fmt.Errorf("not enough healthy DataServers: need %d, have %d", 
-			replicationCount, len(healthyServers))
-	}
-	
-	// 按块数量升序排序，块数少的在前面
-	sort.Slice(healthyServers, func(i, j int) bool {
-		blockCountI, _, _, _, _ := healthyServers[i].GetStatus()
-		blockCountJ, _, _, _, _ := healthyServers[j].GetStatus()
-		return blockCountI < blockCountJ
-	})
-	
-	// 选择块数最少的前 replicationCount 个服务器
-	var selected []*model.DataServerInfo
-	if len(healthyServers) > replicationCount {
-		selected = healthyServers[:replicationCount]
-	} else {
-		selected = healthyServers
-	}
-	
-	// 打印日志，方便调试
-	var selectedInfo []string
-	for _, s := range selected {
-		bc, _, _, _, _ := s.GetStatus()
-		selectedInfo = append(selectedInfo, fmt.Sprintf("%s (blocks: %d)", s.ID, bc))
-	}
-	log.Printf("Selected %d servers with least blocks: %v", replicationCount, selectedInfo)
-	
-	return selected, nil
-}
 
+	if len(healthyServers) < 3 {
+		return nil, fmt.Errorf("need at least 3 healthy DataServers for three-replica, have %d", len(healthyServers))
+	}
+
+	serverCount := len(healthyServers)
+
+	// 为了负载均衡，我们采用轮询分配策略
+	var assignments []string
+	serverIndex := 0
+
+	for i := 0; i < totalPhysicalBlocks; i++ {
+		// 选择当前服务器
+		selectedServer := healthyServers[serverIndex%serverCount]
+		assignments = append(assignments, selectedServer.Addr)
+
+		// 移动到下一个服务器
+		serverIndex++
+	}
+
+	log.Printf("Three-replica distribution: %d physical blocks distributed across %d servers",
+		totalPhysicalBlocks, serverCount)
+
+	// 统计每个服务器分配到的块数量
+	serverBlockCount := make(map[string]int)
+	for _, addr := range assignments {
+		serverBlockCount[addr]++
+	}
+
+	for addr, count := range serverBlockCount {
+		log.Printf("  Server %s: %d blocks", addr, count)
+	}
+
+	return assignments, nil
+}
 
 // SendCommand 向指定的 DataServer 发送命令
 func (cs *ClusterService) SendCommand(dataServerID string, command *model.Command) {
