@@ -103,34 +103,44 @@ func (ss *SchedulerService) generateBlockID() uint64 {
 	return ss.blockIDCounter
 }
 
-// AllocateBlocks 为文件分配数据块位置
+// AllocateBlocks 为文件分配数据块位置（改进的按块调度策略）
 func (ss *SchedulerService) AllocateBlocks(fileSize uint64, replication int) ([]*pb.BlockLocations, error) {
 	if replication <= 0 {
 		replication = ss.config.Cluster.DefaultReplication
 	}
 	
-	// 计算需要的块数量
-	blockCount := (fileSize + ss.config.Scheduler.BlockSize - 1) / ss.config.Scheduler.BlockSize
-	if blockCount == 0 {
-		blockCount = 1 // 至少分配一个块
+	// 计算需要的逻辑块数量
+	logicalBlockCount := (fileSize + ss.config.Scheduler.BlockSize - 1) / ss.config.Scheduler.BlockSize
+	if logicalBlockCount == 0 {
+		logicalBlockCount = 1 // 至少分配一个块
+	}
+	
+	// 计算总的物理块数量（逻辑块数 × 副本数）
+	totalPhysicalBlocks := int(logicalBlockCount) * replication
+	
+	log.Printf("File allocation: size=%d bytes, logical blocks=%d, replication=%d, total physical blocks=%d",
+		fileSize, logicalBlockCount, replication, totalPhysicalBlocks)
+	
+	// 获取所有物理块的分布（轮询分配到所有DataServer）
+	physicalBlockAssignments, err := ss.clusterService.SelectDataServersForThreeReplica(totalPhysicalBlocks)
+	if err != nil {
+		return nil, fmt.Errorf("failed to allocate physical blocks: %v", err)
 	}
 	
 	var blockLocations []*pb.BlockLocations
 	
-	for i := uint64(0); i < blockCount; i++ {
-		// 为每个块选择存储位置
-		selectedServers, err := ss.clusterService.SelectDataServersForWrite(replication)
-		if err != nil {
-			return nil, fmt.Errorf("failed to select DataServers for block %d: %v", i, err)
-		}
-		
-		// 生成块 ID
+	// 为每个逻辑块创建其副本分布
+	for i := uint64(0); i < logicalBlockCount; i++ {
+		// 生成逻辑块 ID
 		blockID := ss.generateBlockID()
 		
-		// 构建位置列表
+		// 为当前逻辑块分配副本位置
 		var locations []string
-		for _, server := range selectedServers {
-			locations = append(locations, server.Addr)
+		for j := 0; j < replication; j++ {
+			physicalBlockIndex := int(i)*replication + j
+			if physicalBlockIndex < len(physicalBlockAssignments) {
+				locations = append(locations, physicalBlockAssignments[physicalBlockIndex])
+			}
 		}
 		
 		blockLoc := &pb.BlockLocations{
@@ -140,8 +150,12 @@ func (ss *SchedulerService) AllocateBlocks(fileSize uint64, replication int) ([]
 		
 		blockLocations = append(blockLocations, blockLoc)
 		
-		log.Printf("Allocated block %d with %d replicas: %v", blockID, len(locations), locations)
+		log.Printf("Logical block %d (ID: %d) with %d replicas distributed at: %v",
+			i, blockID, len(locations), locations)
 	}
+	
+	log.Printf("Successfully allocated %d logical blocks with %d replicas each, total %d physical blocks distributed across DataServers",
+		logicalBlockCount, replication, totalPhysicalBlocks)
 	
 	return blockLocations, nil
 }
