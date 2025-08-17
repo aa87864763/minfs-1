@@ -29,16 +29,12 @@ type SchedulerService struct {
 	// 垃圾回收相关
 	gcTicker *time.Ticker
 	
-	// 停止信号
+	// 结束信号
 	stopChan chan bool
 	
 	// 互斥锁
 	mutex sync.RWMutex
-	
-	// 块 ID 生成器
-	blockIDCounter uint64
-	blockIDMutex   sync.Mutex
-	
+
 	// 正在修复的块跟踪
 	repairingBlocks map[uint64][]model.RepairTask // blockID -> 修复任务列表
 	repairMutex     sync.RWMutex
@@ -48,6 +44,11 @@ type SchedulerService struct {
 	repairTaskQueue   chan *model.RepairTask    // 修复任务队列
 	concurrentRepairs int32                     // 当前并发修复数
 	maxConcurrentRepairs int32                  // 最大并发修复数
+	
+	// 块ID生成相关
+	lastTimestamp int64 // 上次生成ID的时间戳
+	counter       int64 // 当前时间戳下的计数器
+	idMutex      sync.Mutex // ID生成互斥锁
 }
 
 func NewSchedulerService(config *model.Config, clusterService *ClusterService, metadataService *MetadataService) *SchedulerService {
@@ -56,13 +57,16 @@ func NewSchedulerService(config *model.Config, clusterService *ClusterService, m
 		clusterService:  clusterService,
 		metadataService: metadataService,
 		stopChan:        make(chan bool),
-		blockIDCounter:  uint64(time.Now().Unix()), // 使用时间戳作为初始值
 		repairingBlocks: make(map[uint64][]model.RepairTask),
 		
 		// 初始化Worker Pool
 		fsckCheckQueue:       make(chan *model.FSCKCheckTask, config.Scheduler.RepairQueueSize),
 		repairTaskQueue:      make(chan *model.RepairTask, config.Scheduler.RepairQueueSize),
 		maxConcurrentRepairs: int32(config.Scheduler.MaxConcurrentRepairs),
+		
+		// 初始化ID生成相关字段
+		lastTimestamp: 0,
+		counter:       0,
 	}
 	
 	// 设置块复制完成回调
@@ -94,13 +98,30 @@ func (ss *SchedulerService) startBackgroundTasks() {
 		ss.config.Scheduler.FSCKInterval, ss.config.Scheduler.GCInterval)
 }
 
-// generateBlockID 生成唯一的块 ID
-func (ss *SchedulerService) generateBlockID() uint64 {
-	ss.blockIDMutex.Lock()
-	defer ss.blockIDMutex.Unlock()
-	
-	ss.blockIDCounter++
-	return ss.blockIDCounter
+// generateBlockID 生成唯一的块 ID（实时时间戳 + 累加数）
+func (ss *SchedulerService) generateBlockID() (uint64, error) {
+    ss.idMutex.Lock()
+    defer ss.idMutex.Unlock()
+    
+    // 获取当前毫秒时间戳
+    currentTimestamp := time.Now().UnixNano() / 1e6
+    
+    // 如果时间戳变化了，重置计数器
+    if currentTimestamp != ss.lastTimestamp {
+        ss.lastTimestamp = currentTimestamp
+        ss.counter = 1 // 从1开始计数
+    } else {
+        // 同一毫秒内，计数器递增
+        ss.counter++
+    }
+    
+    // 生成最终ID：时间戳 + 3位计数器（001-100）
+    blockID := uint64(currentTimestamp)*1000 + uint64(ss.counter)
+    
+    log.Printf("Generated block ID: %d (timestamp: %d, counter: %d)", 
+        blockID, currentTimestamp, ss.counter)
+    
+    return blockID, nil
 }
 
 // AllocateBlocks 为文件分配数据块位置（改进的按块调度策略）
@@ -131,28 +152,31 @@ func (ss *SchedulerService) AllocateBlocks(fileSize uint64, replication int) ([]
 	
 	// 为每个逻辑块创建其副本分布
 	for i := uint64(0); i < logicalBlockCount; i++ {
-		// 生成逻辑块 ID
-		blockID := ss.generateBlockID()
-		
-		// 为当前逻辑块分配副本位置
-		var locations []string
-		for j := 0; j < replication; j++ {
-			physicalBlockIndex := int(i)*replication + j
-			if physicalBlockIndex < len(physicalBlockAssignments) {
-				locations = append(locations, physicalBlockAssignments[physicalBlockIndex])
-			}
-		}
-		
-		blockLoc := &pb.BlockLocations{
-			BlockId:   blockID,
-			Locations: locations,
-		}
-		
-		blockLocations = append(blockLocations, blockLoc)
-		
-		log.Printf("Logical block %d (ID: %d) with %d replicas distributed at: %v",
-			i, blockID, len(locations), locations)
-	}
+        // 生成逻辑块 ID（基于毫秒时间戳）
+        blockID, err := ss.generateBlockID()
+        if err != nil {
+            return nil, fmt.Errorf("failed to generate block ID: %v", err)
+        }
+        
+        // 为当前逻辑块分配副本位置
+        var locations []string
+        for j := 0; j < replication; j++ {
+            physicalBlockIndex := int(i)*replication + j
+            if physicalBlockIndex < len(physicalBlockAssignments) {
+                locations = append(locations, physicalBlockAssignments[physicalBlockIndex])
+            }
+        }
+        
+        blockLoc := &pb.BlockLocations{
+            BlockId:   blockID,
+            Locations: locations,
+        }
+        
+        blockLocations = append(blockLocations, blockLoc)
+        
+        log.Printf("Logical block %d (ID: %d) with %d replicas distributed at: %v",
+            i, blockID, len(locations), locations)
+    }
 	
 	log.Printf("Successfully allocated %d logical blocks with %d replicas each, total %d physical blocks distributed across DataServers",
 		logicalBlockCount, replication, totalPhysicalBlocks)
@@ -967,9 +991,11 @@ func (ss *SchedulerService) processFSCKCheckTask(task *model.FSCKCheckTask, work
 				log.Printf("Worker %d: Repair queue full, dropping task for block %d", workerID, blockID)
 			}
 		}
+		// 如果块正在被修复，则不应将其任何副本视为孤儿块
+		return
 	}
 	
-	// 检查孤儿块并清理
+	// 只有在副本数正常的情况下，才检查并清理孤儿块
 	for _, location := range actualLocations {
 		if !ss.isLocationInExpected(location, expectedLocations) {
 			log.Printf("Worker %d: Found orphan block %d at %s, scheduling deletion", workerID, blockID, location)
