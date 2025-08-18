@@ -220,10 +220,26 @@ func (ms *MetadataService) GetNodeInfo(path string) (*pb.NodeInfo, error) {
 			return err
 		}
 		
-		return item.Value(func(val []byte) error {
+		err = item.Value(func(val []byte) error {
 			nodeInfo = &pb.NodeInfo{}
 			return proto.Unmarshal(val, nodeInfo)
 		})
+		if err != nil {
+			return err
+		}
+		
+		// 如果是目录，计算其总大小（递归计算子文件和子目录大小）
+		if nodeInfo.Type == pb.FileType_Directory {
+			totalSize, err := ms.calculateDirectorySizeInTx(txn, inodeID)
+			if err != nil {
+				// 如果计算失败，记录错误但不中断操作，使用原始大小
+				fmt.Printf("Warning: failed to calculate directory size for %s: %v\n", path, err)
+			} else {
+				nodeInfo.Size = totalSize
+			}
+		}
+		
+		return nil
 	})
 	
 	return nodeInfo, err
@@ -278,6 +294,17 @@ func (ms *MetadataService) ListDirectory(path string) ([]*pb.NodeInfo, error) {
 			})
 			if err != nil {
 				continue
+			}
+			
+			// 如果是目录，计算其总大小
+			if childNodeInfo.Type == pb.FileType_Directory {
+				totalSize, err := ms.calculateDirectorySizeInTx(txn, childInodeID)
+				if err != nil {
+					// 如果计算失败，记录错误但不中断操作，使用原始大小
+					fmt.Printf("Warning: failed to calculate directory size for inode %d: %v\n", childInodeID, err)
+				} else {
+					childNodeInfo.Size = totalSize
+				}
 			}
 			
 			nodes = append(nodes, &childNodeInfo)
@@ -958,4 +985,61 @@ func (ms *MetadataService) updateFileBlockLocation(txn *badger.Txn, inodeID, blo
 	}
 	
 	return nil
+}
+
+// calculateDirectorySizeInTx 在事务中递归计算目录的总大小
+func (ms *MetadataService) calculateDirectorySizeInTx(txn *badger.Txn, dirInodeID uint64) (int64, error) {
+	var totalSize int64 = 0
+	
+	// 遍历目录中的所有子项
+	prefix := fmt.Sprintf("%s%d/", model.PrefixDir, dirInodeID)
+	opts := badger.DefaultIteratorOptions
+	opts.PrefetchValues = false
+	it := txn.NewIterator(opts)
+	defer it.Close()
+	
+	for it.Seek([]byte(prefix)); it.ValidForPrefix([]byte(prefix)); it.Next() {
+		item := it.Item()
+		
+		// 获取子项的 Inode ID
+		var childInodeID uint64
+		err := item.Value(func(val []byte) error {
+			childInodeID = binary.BigEndian.Uint64(val)
+			return nil
+		})
+		if err != nil {
+			continue
+		}
+		
+		// 获取子项的 NodeInfo
+		childInodeKey := fmt.Sprintf("%s%d", model.PrefixInode, childInodeID)
+		childItem, err := txn.Get([]byte(childInodeKey))
+		if err != nil {
+			continue
+		}
+		
+		var childNodeInfo pb.NodeInfo
+		err = childItem.Value(func(val []byte) error {
+			return proto.Unmarshal(val, &childNodeInfo)
+		})
+		if err != nil {
+			continue
+		}
+		
+		if childNodeInfo.Type == pb.FileType_File {
+			// 如果是文件，直接累加文件大小
+			totalSize += childNodeInfo.Size
+		} else if childNodeInfo.Type == pb.FileType_Directory {
+			// 如果是目录，递归计算子目录大小
+			subDirSize, err := ms.calculateDirectorySizeInTx(txn, childInodeID)
+			if err != nil {
+				// 递归计算失败，记录警告但继续处理其他子项
+				fmt.Printf("Warning: failed to calculate subdirectory size for inode %d: %v\n", childInodeID, err)
+				continue
+			}
+			totalSize += subDirSize
+		}
+	}
+	
+	return totalSize, nil
 }
