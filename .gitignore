@@ -16,7 +16,7 @@ bin/
 *.tmp
 *.bat
 
-
+/web-api
 /metaserver/metadb
 /metaserver/metadb1
 /metaserver/metadb2

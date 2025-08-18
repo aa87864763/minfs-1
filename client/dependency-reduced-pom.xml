@@ -38,18 +38,6 @@
         </configuration>
       </plugin>
       <plugin>
-        <artifactId>maven-jar-plugin</artifactId>
-        <version>3.3.0</version>
-        <configuration>
-          <finalName>easyClient-1.0</finalName>
-          <archive>
-            <manifest>
-              <mainClass>com.ksyun.campus.client.cli.MinFSCLI</mainClass>
-            </manifest>
-          </archive>
-        </configuration>
-      </plugin>
-      <plugin>
         <artifactId>maven-shade-plugin</artifactId>
         <version>3.5.1</version>
         <executions>
@@ -59,12 +47,15 @@
               <goal>shade</goal>
             </goals>
             <configuration>
-              <finalName>minfs-client-${version}</finalName>
+              <finalName>easyClient-1.0</finalName>
               <transformers>
-                <transformer>
-                  <mainClass>com.ksyun.campus.client.cli.MinFSCLI</mainClass>
-                </transformer>
                 <transformer />
+                <transformer>
+                  <resource>META-INF/spring.handlers</resource>
+                </transformer>
+                <transformer>
+                  <resource>META-INF/spring.schemas</resource>
+                </transformer>
               </transformers>
               <filters>
                 <filter>
@@ -73,6 +64,7 @@
                     <exclude>META-INF/*.SF</exclude>
                     <exclude>META-INF/*.DSA</exclude>
                     <exclude>META-INF/*.RSA</exclude>
+                    <exclude>META-INF/MANIFEST.MF</exclude>
                   </excludes>
                 </filter>
               </filters>

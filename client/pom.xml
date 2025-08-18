@@ -123,22 +123,7 @@
                 </executions>
             </plugin>
 
-            <!-- 打包为 easyClient-1.0.jar -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <version>3.3.0</version>
-                <configuration>
-                    <finalName>easyClient-1.0</finalName>
-                    <archive>
-                        <manifest>
-                            <mainClass>com.ksyun.campus.client.cli.MinFSCLI</mainClass>
-                        </manifest>
-                    </archive>
-                </configuration>
-            </plugin>
-
-            <!-- 生成包含所有依赖的可执行JAR -->
+            <!-- 生成符合考核要求的纯SDK JAR包（包含所有依赖） -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -150,23 +135,32 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
-                            <finalName>minfs-client-${version}</finalName>
+                            <finalName>easyClient-1.0</finalName>
                             <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.ksyun.campus.client.cli.MinFSCLI</mainClass>
-                                </transformer>
+                                <!-- 处理服务发现的META-INF/services文件 -->
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <!-- 处理Spring的META-INF文件 -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                    <resource>META-INF/spring.handlers</resource>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                    <resource>META-INF/spring.schemas</resource>
+                                </transformer>
                             </transformers>
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>
                                     <excludes>
+                                        <!-- 排除签名文件 -->
                                         <exclude>META-INF/*.SF</exclude>
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
+                                        <!-- 排除不需要的文件 -->
+                                        <exclude>META-INF/MANIFEST.MF</exclude>
                                     </excludes>
                                 </filter>
                             </filters>
+                            <!-- 不设置mainClass，保持为纯SDK -->
                         </configuration>
                     </execution>
                 </executions>
