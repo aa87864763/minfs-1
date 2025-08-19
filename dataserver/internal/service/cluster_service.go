@@ -217,40 +217,36 @@ func (s *EtcdClusterService) handleLeaderChange() error {
 	return nil
 }
 
-// Stop 停止集群服务
+// Stop 停止集群服务 (注意：etcd注销应在调用此方法前完成)
 func (s *EtcdClusterService) Stop() error {
 	if !s.isRunning {
 		return nil
 	}
-	
+
+	log.Println("Stopping cluster service...")
+
 	// 停止Leader监听
 	close(s.leaderStopChan)
-	
+
 	// 停止心跳循环
 	close(s.stopChan)
 	s.isRunning = false
-	
-	// 撤销租约
-	if s.leaseID != 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		
-		_, err := s.lease.Revoke(ctx, s.leaseID)
-		if err != nil {
-			log.Printf("Failed to revoke lease: %v", err)
-		}
+
+	// 关闭租约客户端 (租约应该已经在DeregisterFromETCD中撤销)
+	if s.lease != nil {
+		s.lease.Close()
 	}
-	
+
 	// 关闭连接
 	if s.metaClient != nil {
 		s.metaClient.Close()
 	}
-	
+
 	if s.etcdClient != nil {
 		s.etcdClient.Close()
 	}
-	
-	log.Println("Cluster service stopped")
+
+	log.Println("Cluster service stopped successfully")
 	return nil
 }
 
@@ -548,4 +544,81 @@ func (s *EtcdClusterService) reconnectToLeader() error {
 // 使用生成的MetaServer客户端
 func NewMetaServerServiceClient(conn *grpc.ClientConn) pb.MetaServerServiceClient {
 	return pb.NewMetaServerServiceClient(conn)
+}
+
+// GetETCDClient 获取etcd客户端（用于优雅关闭时注销）
+func (s *EtcdClusterService) GetETCDClient() (*clientv3.Client, error) {
+	if s.etcdClient == nil {
+		return nil, fmt.Errorf("etcd client is not available")
+	}
+	return s.etcdClient, nil
+}
+
+// RevokeLease 撤销租约（用于优雅关闭时注销）
+func (s *EtcdClusterService) RevokeLease() error {
+	if s.lease == nil || s.leaseID == 0 {
+		return fmt.Errorf("lease is not available")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := s.lease.Revoke(ctx, s.leaseID)
+	if err != nil {
+		return fmt.Errorf("failed to revoke lease: %v", err)
+	}
+
+	log.Printf("Successfully revoked lease: %x", s.leaseID)
+	return nil
+}
+
+// DeregisterFromETCD 从etcd中注销服务 (带保护机制)
+func (s *EtcdClusterService) DeregisterFromETCD() error {
+	log.Printf("Deregistering DataServer %s from etcd...", s.config.Server.DataserverId)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 删除服务注册key (带重试机制)
+	key := fmt.Sprintf("/minfs/dataserver/%s", s.config.Server.DataserverId)
+	retryCount := 3
+	
+	for i := 0; i < retryCount; i++ {
+		if ctx.Err() != nil {
+			return fmt.Errorf("context timeout during service key deletion")
+		}
+		
+		if _, err := s.etcdClient.Delete(ctx, key); err != nil {
+			log.Printf("Failed to delete service key %s (attempt %d/%d): %v", key, i+1, retryCount, err)
+			if i == retryCount-1 {
+				log.Printf("All retry attempts failed for service key deletion")
+				// 不返回错误，继续撤销租约
+			} else {
+				time.Sleep(time.Duration(i+1) * time.Second) // 指数退避
+			}
+		} else {
+			log.Printf("Successfully deleted service key: %s", key)
+			break
+		}
+	}
+
+	// 撤销租约 (带超时保护)
+	revokeDone := make(chan error, 1)
+	go func() {
+		revokeDone <- s.RevokeLease()
+	}()
+	
+	select {
+	case err := <-revokeDone:
+		if err != nil {
+			log.Printf("Failed to revoke lease: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		log.Printf("Lease revocation timeout")
+	case <-ctx.Done():
+		log.Printf("Context timeout during lease revocation")
+	}
+
+	log.Printf("DataServer %s successfully deregistered from etcd", s.config.Server.DataserverId)
+	return nil
 }

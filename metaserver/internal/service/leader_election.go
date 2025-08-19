@@ -490,3 +490,34 @@ func (le *LeaderElection) Stop() {
 	
 	log.Printf("LeaderElection stopped for node %s", le.nodeID)
 }
+
+// GetETCDClient 获取etcd客户端（用于优雅关闭时注销）
+func (le *LeaderElection) GetETCDClient() (*clientv3.Client, error) {
+	le.mutex.RLock()
+	defer le.mutex.RUnlock()
+	
+	if le.etcdClient == nil {
+		return nil, fmt.Errorf("etcd client is not available")
+	}
+	
+	return le.etcdClient, nil
+}
+
+// Resign 主动退出leader角色（用于优雅关闭）
+func (le *LeaderElection) Resign() error {
+	le.mutex.RLock()
+	defer le.mutex.RUnlock()
+	
+	if !le.isLeader {
+		return fmt.Errorf("not currently a leader")
+	}
+	
+	if le.election == nil {
+		return fmt.Errorf("election is not available")
+	}
+	
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	return le.election.Resign(ctx)
+}

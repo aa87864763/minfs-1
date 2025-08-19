@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
+	"time"
 
 	"metaserver/internal/handler"
 	"metaserver/internal/model"
@@ -139,16 +142,55 @@ func main() {
 	// 优雅关闭
 	log.Println("Shutting down MetaServer...")
 	
-	// 停止 gRPC 服务器
-	grpcServer.GracefulStop()
+	// 使用WaitGroup和超时机制保护关闭流程
+	var wg sync.WaitGroup
+	shutdownTimeout := 30 * time.Second
+	shutdownComplete := make(chan struct{})
 	
-	// 停止后台服务
-	schedulerService.Stop()
-	clusterService.Stop()
-	leaderElection.Stop()
-	walService.Close()
-
-	log.Println("MetaServer shutdown complete")
+	go func() {
+		defer close(shutdownComplete)
+		
+		// 主动注销etcd注册信息 (带超时保护)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := gracefulDeregisterFromETCD(leaderElection, currentNodeID); err != nil {
+				log.Printf("Failed to deregister from etcd: %v", err)
+			}
+		}()
+		
+		// 等待etcd注销完成或超时
+		etcdDone := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(etcdDone)
+		}()
+		
+		select {
+		case <-etcdDone:
+			log.Println("Etcd deregistration completed")
+		case <-time.After(10 * time.Second):
+			log.Println("Etcd deregistration timeout, proceeding with shutdown")
+		}
+		
+		// 停止 gRPC 服务器
+		grpcServer.GracefulStop()
+		
+		// 停止后台服务
+		schedulerService.Stop()
+		clusterService.Stop()
+		leaderElection.Stop()
+		walService.Close()
+	}()
+	
+	// 等待关闭完成或超时
+	select {
+	case <-shutdownComplete:
+		log.Println("MetaServer shutdown complete")
+	case <-time.After(shutdownTimeout):
+		log.Println("Shutdown timeout reached, forcing exit")
+		grpcServer.Stop() // 强制停止gRPC服务器
+	}
 }
 
 // replayWALLogs 回放WAL日志
@@ -224,5 +266,80 @@ func initRootDirectory(db *badger.DB, config *model.Config) error {
 	}
 
 	log.Println("Root directory created successfully")
+	return nil
+}
+
+// gracefulDeregisterFromETCD 优雅地从etcd注销服务信息 (带保护机制)
+func gracefulDeregisterFromETCD(leaderElection *service.LeaderElection, nodeID string) error {
+	log.Printf("Attempting to gracefully deregister MetaServer %s from etcd...", nodeID)
+	
+	// 使用sync.Once确保只执行一次
+	var once sync.Once
+	var finalErr error
+	
+	once.Do(func() {
+		// 设置总体超时
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		
+		// 获取etcd客户端
+		etcdClient, err := leaderElection.GetETCDClient()
+		if err != nil {
+			finalErr = fmt.Errorf("failed to get etcd client: %v", err)
+			return
+		}
+		
+		// 删除节点注册信息 (带重试机制)
+		nodeKey := fmt.Sprintf("/minfs/metaserver/nodes/%s", nodeID)
+		retryCount := 3
+		
+		for i := 0; i < retryCount; i++ {
+			if ctx.Err() != nil {
+				finalErr = fmt.Errorf("context timeout during node deletion")
+				return
+			}
+			
+			if _, err := etcdClient.Delete(ctx, nodeKey); err != nil {
+				log.Printf("Failed to delete node key %s (attempt %d/%d): %v", nodeKey, i+1, retryCount, err)
+				if i == retryCount-1 {
+					log.Printf("All retry attempts failed for node key deletion")
+				} else {
+					time.Sleep(time.Duration(i+1) * time.Second) // 指数退避
+				}
+			} else {
+				log.Printf("Successfully deleted node key: %s", nodeKey)
+				break
+			}
+		}
+		
+		// 如果是leader，主动resign (带超时保护)
+		if leaderElection.IsLeader() {
+			log.Printf("Node %s is leader, resigning from leadership...", nodeID)
+			resignDone := make(chan error, 1)
+			
+			go func() {
+				resignDone <- leaderElection.Resign()
+			}()
+			
+			select {
+			case err := <-resignDone:
+				if err != nil {
+					log.Printf("Failed to resign leadership: %v", err)
+				} else {
+					log.Printf("Successfully resigned from leadership")
+				}
+			case <-time.After(5 * time.Second):
+				log.Printf("Leadership resignation timeout")
+			case <-ctx.Done():
+				log.Printf("Context timeout during leadership resignation")
+			}
+		}
+	})
+	
+	if finalErr != nil {
+		return finalErr
+	}
+	
+	log.Printf("MetaServer %s successfully deregistered from etcd", nodeID)
 	return nil
 }

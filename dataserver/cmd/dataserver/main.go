@@ -7,7 +7,9 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
+	"time"
 
 	"dataserver/internal/handler"
 	"dataserver/internal/model"
@@ -116,7 +118,7 @@ func main() {
 	}()
 	
 	// 等待中断信号
-	waitForShutdown(grpcServer, clusterService)
+	waitForShutdown(grpcServer, clusterService, config)
 	
 	log.Println("DataServer shutdown complete")
 }
@@ -185,8 +187,8 @@ func validateConfig(config *model.Config) error {
 	return nil
 }
 
-// waitForShutdown 等待关闭信号并优雅关闭
-func waitForShutdown(grpcServer *grpc.Server, clusterService model.ClusterService) {
+// waitForShutdown 等待关闭信号并优雅关闭 (带保护机制)
+func waitForShutdown(grpcServer *grpc.Server, clusterService model.ClusterService, config *model.Config) {
 	// 创建信号通道
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -195,15 +197,72 @@ func waitForShutdown(grpcServer *grpc.Server, clusterService model.ClusterServic
 	sig := <-sigChan
 	log.Printf("Received signal %s, initiating graceful shutdown...", sig)
 	
-	// 停止接受新的连接
-	grpcServer.GracefulStop()
-	log.Println("gRPC server stopped")
+	// 设置关闭超时 (优化后减少到15秒)
+	shutdownTimeout := 15 * time.Second
+	shutdownComplete := make(chan struct{})
 	
-	// 停止集群服务
-	if err := clusterService.Stop(); err != nil {
-		log.Printf("Error stopping cluster service: %v", err)
+	go func() {
+		defer close(shutdownComplete)
+		
+		// 立即停止心跳循环以减少延迟
+		if err := clusterService.Stop(); err != nil {
+			log.Printf("Error stopping cluster service: %v", err)
+		}
+		log.Println("Cluster service stopped")
+		
+		// 并行执行etcd注销和gRPC关闭以减少总时间
+		var wg sync.WaitGroup
+		wg.Add(2)
+		
+		// etcd注销 (带更短超时)
+		go func() {
+			defer wg.Done()
+			deregisterDone := make(chan error, 1)
+			go func() {
+				deregisterDone <- gracefulDeregisterFromETCD(clusterService, config)
+			}()
+			
+			select {
+			case err := <-deregisterDone:
+				if err != nil {
+					log.Printf("Failed to deregister from etcd: %v", err)
+				} else {
+					log.Println("Successfully deregistered from etcd")
+				}
+			case <-time.After(6 * time.Second): // 减少到6秒
+				log.Println("Etcd deregistration timeout, proceeding with shutdown")
+			}
+		}()
+		
+		// gRPC优雅关闭 (带超时保护)
+		go func() {
+			defer wg.Done()
+			grpcDone := make(chan struct{})
+			go func() {
+				grpcServer.GracefulStop()
+				close(grpcDone)
+			}()
+			
+			select {
+			case <-grpcDone:
+				log.Println("gRPC server gracefully stopped")
+			case <-time.After(5 * time.Second): // 5秒超时
+				log.Println("gRPC graceful stop timeout, forcing stop")
+				grpcServer.Stop() // 强制停止
+			}
+		}()
+		
+		wg.Wait()
+	}()
+	
+	// 等待关闭完成或超时
+	select {
+	case <-shutdownComplete:
+		log.Println("Graceful shutdown completed")
+	case <-time.After(shutdownTimeout):
+		log.Println("Shutdown timeout reached, forcing exit")
+		grpcServer.Stop() // 强制停止gRPC服务器
 	}
-	log.Println("Cluster service stopped")
 }
 
 // printStartupBanner 打印启动横幅
@@ -223,4 +282,35 @@ func printStartupBanner(config *model.Config) {
 	log.Printf("Etcd Endpoints: %v", config.Etcd.Endpoints)
 	log.Printf("MetaServer Discovery: via etcd leader election")
 	fmt.Println()
+}
+
+// gracefulDeregisterFromETCD 优雅地从etcd注销DataServer服务信息 (带保护机制)
+func gracefulDeregisterFromETCD(clusterService model.ClusterService, config *model.Config) error {
+	log.Printf("Attempting to gracefully deregister DataServer %s from etcd...", config.Server.DataserverId)
+
+	// 尝试调用集群服务的注销方法 (带超时保护)
+	if deregisterService, ok := clusterService.(interface {
+		DeregisterFromETCD() error
+	}); ok {
+		// 使用channel和超时机制保护
+		done := make(chan error, 1)
+		go func() {
+			done <- deregisterService.DeregisterFromETCD()
+		}()
+		
+		select {
+		case err := <-done:
+			if err != nil {
+				return fmt.Errorf("failed to deregister from etcd: %v", err)
+			}
+			log.Printf("DataServer %s successfully deregistered from etcd", config.Server.DataserverId)
+			return nil
+		case <-time.After(5 * time.Second):
+			return fmt.Errorf("deregistration timeout after 5 seconds")
+		}
+	}
+
+	// 如果是mock模式或没有DeregisterFromETCD方法，直接返回成功
+	log.Printf("DataServer %s deregistration complete (mock mode or fallback)", config.Server.DataserverId)
+	return nil
 }
