@@ -17,6 +17,8 @@ bin/
 *.bat
 
 /web-api
+SDKCLITest.java
+SDKCLITest.class
 /metaserver/metadb
 /metaserver/metadb1
 /metaserver/metadb2
