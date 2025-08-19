@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -242,35 +241,20 @@ func (ws *WALService) ReplayLogEntry(entry *pb.LogEntry, metadataService *Metada
 				log.Printf("WAL Replay: CreateNode %s already exists with correct inode %d, skipping", op.Path, op.InodeId)
 				return nil
 			} else {
-				log.Printf("WAL Replay: CreateNode %s already exists but with different inode %d (expected %d)", 
+				log.Printf("WAL Replay: CreateNode %s already exists but with different inode %d (expected %d), this indicates data inconsistency", 
 					op.Path, existingNodeInfo.Inode, op.InodeId)
-				// 这种情况下我们接受现有的inode ID，但记录警告
-				return nil
+				return fmt.Errorf("inode mismatch for path %s: existing=%d, expected=%d", op.Path, existingNodeInfo.Inode, op.InodeId)
 			}
 		}
 		
-		// 文件不存在，需要创建
-		// TODO: 理想情况下应该创建具有指定inode ID的文件，但当前CreateNode不支持
-		// 目前先创建文件，然后验证inode ID
-		err = metadataService.CreateNode(op.Path, op.Type)
+		// 文件不存在，使用指定的 Inode ID 创建
+		err = metadataService.CreateNodeWithInode(op.Path, op.Type, &op.InodeId)
 		if err != nil {
-			log.Printf("WAL Replay: Failed to create node %s: %v", op.Path, err)
+			log.Printf("WAL Replay: Failed to create node %s with inode %d: %v", op.Path, op.InodeId, err)
 			return err
 		}
 		
-		// 验证创建的文件是否有正确的inode ID
-		newNodeInfo, err := metadataService.GetNodeInfo(op.Path)
-		if err != nil {
-			log.Printf("WAL Replay: Failed to get node info for %s: %v", op.Path, err)
-			return err
-		}
-		
-		if newNodeInfo.Inode != op.InodeId {
-			log.Printf("WAL Replay: WARNING - Created node %s with inode %d, but WAL expected %d", 
-				op.Path, newNodeInfo.Inode, op.InodeId)
-		}
-		
-		log.Printf("WAL Replay: Successfully created node %s with inode %d", op.Path, newNodeInfo.Inode)
+		log.Printf("WAL Replay: Successfully created node %s with inode %d", op.Path, op.InodeId)
 		return nil
 		
 	case pb.WALOperationType_DELETE_NODE:
@@ -309,38 +293,35 @@ func (ws *WALService) ReplayLogEntry(entry *pb.LogEntry, metadataService *Metada
 		log.Printf("WAL Replay: FinalizeWrite %s (inode=%d, size=%d, md5=%s, %d blocks)", 
 			op.Path, op.Inode, op.Size, op.Md5, len(op.BlockLocations))
 		
-		// 检查文件是否存在，如果不存在则先创建基本文件元数据
+		// 检查文件是否存在
 		nodeInfo, err := metadataService.GetNodeInfo(op.Path)
-		var actualInodeID uint64
 		if err != nil {
-			// 文件不存在，先创建基本文件元数据
-			log.Printf("WAL Replay: File %s does not exist (error: %v), creating basic file metadata for inode %d", op.Path, err, op.Inode)
-			err = ws.createFileForReplay(metadataService, op.Path, op.Inode)
-			if err != nil {
-				log.Printf("WAL Replay: Failed to create file metadata for %s: %v", op.Path, err)
-				return err
-			}
-			log.Printf("WAL Replay: Successfully created file metadata for %s with inode %d", op.Path, op.Inode)
-			actualInodeID = op.Inode
-		} else {
-			log.Printf("WAL Replay: File %s already exists with inode %d (expected inode %d)", op.Path, nodeInfo.Inode, op.Inode)
-			// 使用实际的inode ID，而不是WAL中记录的
-			actualInodeID = nodeInfo.Inode
+			// 文件不存在，这不应该发生，因为应该先有CreateNode
+			log.Printf("WAL Replay: ERROR - FinalizeWrite for non-existent file %s (expected inode %d)", op.Path, op.Inode)
+			return fmt.Errorf("cannot finalize write for non-existent file: %s", op.Path)
 		}
 		
-		// 先恢复块映射（使用实际的inode ID）
-		log.Printf("WAL Replay: Setting block mappings for inode %d (originally %d)", actualInodeID, op.Inode)
+		// 验证 Inode ID 是否一致
+		if nodeInfo.Inode != op.Inode {
+			log.Printf("WAL Replay: ERROR - Inode mismatch for FinalizeWrite %s: existing=%d, expected=%d", 
+				op.Path, nodeInfo.Inode, op.Inode)
+			return fmt.Errorf("inode mismatch for FinalizeWrite %s: existing=%d, expected=%d", 
+				op.Path, nodeInfo.Inode, op.Inode)
+		}
+		
+		// 设置块映射
+		log.Printf("WAL Replay: Setting block mappings for inode %d", op.Inode)
 		for i, blockMapping := range op.BlockLocations {
-			err := metadataService.setBlockMappingInDB(actualInodeID, uint64(i), blockMapping)
+			err := metadataService.setBlockMappingInDB(op.Inode, uint64(i), blockMapping)
 			if err != nil {
-				log.Printf("WAL Replay: Failed to set block mapping for %s (inode %d): %v", op.Path, actualInodeID, err)
+				log.Printf("WAL Replay: Failed to set block mapping for %s (inode %d): %v", op.Path, op.Inode, err)
 				return err
 			}
 		}
 		
-		// 执行FinalizeWrite操作（使用实际的inode ID）
-		log.Printf("WAL Replay: Finalizing write for %s with inode %d", op.Path, actualInodeID)
-		err = metadataService.FinalizeWrite(op.Path, actualInodeID, uint64(op.Size), op.Md5)
+		// 执行FinalizeWrite操作
+		log.Printf("WAL Replay: Finalizing write for %s with inode %d", op.Path, op.Inode)
+		err = metadataService.FinalizeWrite(op.Path, op.Inode, uint64(op.Size), op.Md5)
 		if err != nil {
 			log.Printf("WAL Replay: Failed to finalize write for %s: %v", op.Path, err)
 			return err
@@ -766,103 +747,6 @@ func (ws *WALService) ReplayWALFromIndex(startIndex uint64, metadataService *Met
 	
 	log.Printf("WAL replay completed, replayed %d entries", replayedCount)
 	return nil
-}
-
-// createFileForReplay 在WAL回放时创建文件的基本元数据
-func (ws *WALService) createFileForReplay(metadataService *MetadataService, path string, inodeID uint64) error {
-	// 导入必要的包
-	// 这个方法模仿CreateNode但使用指定的inodeID
-	path = filepath.Clean(path)
-	if path == "." {
-		path = "/"
-	}
-	
-	log.Printf("WAL Replay: createFileForReplay attempting to create file %s with inode %d", path, inodeID)
-	
-	return metadataService.db.Update(func(txn *badger.Txn) error {
-		// 检查路径是否已存在
-		pathKey := model.PrefixPath + path
-		_, err := txn.Get([]byte(pathKey))
-		if err == nil {
-			// 路径已存在，不需要创建
-			log.Printf("WAL Replay: createFileForReplay - path %s already exists, skipping creation", path)
-			return nil
-		}
-		if err != badger.ErrKeyNotFound {
-			return err
-		}
-		
-		// 检查父目录是否存在
-		parentPath := filepath.Dir(path)
-		if parentPath != "/" {
-			parentKey := model.PrefixPath + parentPath
-			_, err := txn.Get([]byte(parentKey))
-			if err == badger.ErrKeyNotFound {
-				return fmt.Errorf("parent directory does not exist: %s", parentPath)
-			}
-			if err != nil {
-				return err
-			}
-		}
-		
-		// 创建 NodeInfo 使用指定的inodeID
-		nodeInfo := &pb.NodeInfo{
-			Inode:       inodeID,
-			Path:        path,
-			Type:        pb.FileType_File,
-			Size:        0,
-			Mtime:       time.Now().UnixMilli(),
-			Replication: 3, // 默认副本数
-		}
-		
-		// 序列化并存储 Inode 信息
-		data, err := proto.Marshal(nodeInfo)
-		if err != nil {
-			return err
-		}
-		
-		inodeKey := fmt.Sprintf("%s%d", model.PrefixInode, inodeID)
-		if err := txn.Set([]byte(inodeKey), data); err != nil {
-			return err
-		}
-		
-		// 存储路径映射
-		inodeBuf := make([]byte, 8)
-		binary.BigEndian.PutUint64(inodeBuf, inodeID)
-		if err := txn.Set([]byte(pathKey), inodeBuf); err != nil {
-			return err
-		}
-		
-		// 如果不是根目录，更新父目录的目录条目
-		if path != "/" {
-			parentPath := filepath.Dir(path)
-			fileName := filepath.Base(path)
-			
-			// 获取父目录的 Inode ID
-			parentKey := "path:" + parentPath
-			item, err := txn.Get([]byte(parentKey))
-			if err != nil {
-				return err
-			}
-			
-			var parentInodeID uint64
-			err = item.Value(func(val []byte) error {
-				parentInodeID = binary.BigEndian.Uint64(val)
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-			
-			// 添加目录条目
-			dirKey := fmt.Sprintf("dir:%d/%s", parentInodeID, fileName)
-			if err := txn.Set([]byte(dirKey), inodeBuf); err != nil {
-				return err
-			}
-		}
-		
-		return nil
-	})
 }
 
 // clearAllWALEntries 清空所有WAL条目（用于分叉恢复时的强制重置）

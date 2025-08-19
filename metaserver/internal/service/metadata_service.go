@@ -58,6 +58,11 @@ func (ms *MetadataService) generateInodeID() (uint64, error) {
 
 // CreateNode 创建文件或目录节点
 func (ms *MetadataService) CreateNode(path string, nodeType pb.FileType) error {
+	return ms.CreateNodeWithInode(path, nodeType, nil)
+}
+
+// CreateNodeWithInode 创建文件或目录节点，可以指定Inode ID（用于WAL回放）
+func (ms *MetadataService) CreateNodeWithInode(path string, nodeType pb.FileType, inodeID *uint64) error {
 	// 转换 FileType 为内部使用的 NodeType
 	var internalType pb.FileType
 	switch nodeType {
@@ -98,15 +103,39 @@ func (ms *MetadataService) CreateNode(path string, nodeType pb.FileType) error {
 			}
 		}
 		
-		// 生成新的 Inode ID
-		inodeID, err := ms.generateInodeIDInTx(txn)
-		if err != nil {
-			return err
+		// 生成新的 Inode ID 或使用指定的 Inode ID
+		var nodeInodeID uint64
+		if inodeID != nil {
+			// 使用指定的 Inode ID（WAL回放模式）
+			nodeInodeID = *inodeID
+			
+			// 验证指定的 Inode ID 是否已被使用
+			inodeKey := fmt.Sprintf("%s%d", model.PrefixInode, nodeInodeID)
+			_, err := txn.Get([]byte(inodeKey))
+			if err == nil {
+				return fmt.Errorf("inode ID %d already exists", nodeInodeID)
+			}
+			if err != badger.ErrKeyNotFound {
+				return err
+			}
+			
+			// 如果指定的 Inode ID 比当前计数器大，需要更新计数器
+			err = ms.updateInodeCounterIfNeededInTx(txn, nodeInodeID)
+			if err != nil {
+				return err
+			}
+		} else {
+			// 正常模式：生成新的 Inode ID
+			var generateErr error
+			nodeInodeID, generateErr = ms.generateInodeIDInTx(txn)
+			if generateErr != nil {
+				return generateErr
+			}
 		}
 		
 		// 创建 NodeInfo
 		nodeInfo := &pb.NodeInfo{
-			Inode:       inodeID,
+			Inode:       nodeInodeID,
 			Path:        path,
 			Type:        internalType,
 			Size:        0,
@@ -120,14 +149,14 @@ func (ms *MetadataService) CreateNode(path string, nodeType pb.FileType) error {
 			return err
 		}
 		
-		inodeKey := fmt.Sprintf("%s%d", model.PrefixInode, inodeID)
+		inodeKey := fmt.Sprintf("%s%d", model.PrefixInode, nodeInodeID)
 		if err := txn.Set([]byte(inodeKey), data); err != nil {
 			return err
 		}
 		
 		// 存储路径映射
 		inodeBuf := make([]byte, 8)
-		binary.BigEndian.PutUint64(inodeBuf, inodeID)
+		binary.BigEndian.PutUint64(inodeBuf, nodeInodeID)
 		if err := txn.Set([]byte(pathKey), inodeBuf); err != nil {
 			return err
 		}
@@ -1008,4 +1037,33 @@ func (ms *MetadataService) calculateDirectorySizeInTx(txn *badger.Txn, dirInodeI
 	}
 	
 	return totalSize, nil
+}
+
+// updateInodeCounterIfNeededInTx 如果指定的 Inode ID 比当前计数器大，则更新计数器
+func (ms *MetadataService) updateInodeCounterIfNeededInTx(txn *badger.Txn, inodeID uint64) error {
+	// 获取当前计数器值
+	var currentCounter uint64
+	item, err := txn.Get([]byte(model.InodeCounterKey))
+	if err == badger.ErrKeyNotFound {
+		currentCounter = 0
+	} else if err != nil {
+		return err
+	} else {
+		err = item.Value(func(val []byte) error {
+			currentCounter = binary.BigEndian.Uint64(val)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	
+	// 如果指定的 Inode ID 比当前计数器大，更新计数器
+	if inodeID > currentCounter {
+		buf := make([]byte, 8)
+		binary.BigEndian.PutUint64(buf, inodeID)
+		return txn.Set([]byte(model.InodeCounterKey), buf)
+	}
+	
+	return nil
 }
