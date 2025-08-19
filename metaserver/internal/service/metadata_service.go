@@ -330,6 +330,8 @@ func (ms *MetadataService) DeleteNode(path string, recursive bool) ([]model.Bloc
 	var blocksToDelete []model.BlockWithLocations
 	
 	err := ms.db.Update(func(txn *badger.Txn) error {
+		// 关键修复：每次事务重试时清空blocksToDelete，避免重复累积
+		blocksToDelete = blocksToDelete[:0]
 		// 获取节点信息
 		inodeID, err := ms.getInodeIDByPathInTx(txn, path)
 		if err != nil {
@@ -387,54 +389,7 @@ func (ms *MetadataService) DeleteNode(path string, recursive bool) ([]model.Bloc
 	return blocksToDelete, err
 }
 
-// deleteNodeRecursiveInTx 在事务中递归删除节点
-func (ms *MetadataService) deleteNodeRecursiveInTx(txn *badger.Txn, inodeID uint64, path string) ([]uint64, error) {
-	var blocksToDelete []uint64
-	
-	// 获取节点信息
-	inodeKey := fmt.Sprintf("%s%d", model.PrefixInode, inodeID)
-	item, err := txn.Get([]byte(inodeKey))
-	if err != nil {
-		return nil, err
-	}
-	
-	var nodeInfo pb.NodeInfo
-	err = item.Value(func(val []byte) error {
-		return proto.Unmarshal(val, &nodeInfo)
-	})
-	if err != nil {
-		return nil, err
-	}
-	
-	// 如果是目录，递归删除子节点
-	if nodeInfo.Type == pb.FileType_Directory {
-		children, err := ms.listDirectoryInTx(txn, inodeID)
-		if err != nil {
-			return nil, err
-		}
-		
-		for _, child := range children {
-			childBlocks, err := ms.deleteNodeRecursiveInTx(txn, child.Inode, child.Path)
-			if err != nil {
-				return nil, err
-			}
-			blocksToDelete = append(blocksToDelete, childBlocks...)
-		}
-	} else {
-		// 如果是文件，收集需要删除的块
-		blocks, err := ms.getFileBlocksInTx(txn, inodeID)
-		if err != nil {
-			return nil, err
-		}
-		blocksToDelete = append(blocksToDelete, blocks...)
-	}
-	
-	// 删除节点本身
-	err = ms.deleteNodeInTx(txn, inodeID, path)
-	return blocksToDelete, err
-}
-
-// deleteNodeRecursiveWithLocationsInTx 在事务中递归删除节点并返回块位置信息
+// deleteNodeRecursiveWithLocationsInTx 在事务中递归删除节点（返回带位置信息的块）
 func (ms *MetadataService) deleteNodeRecursiveWithLocationsInTx(txn *badger.Txn, inodeID uint64, path string) ([]model.BlockWithLocations, error) {
 	var blocksToDelete []model.BlockWithLocations
 	
@@ -625,11 +580,22 @@ func (ms *MetadataService) deleteKeysWithPrefixInTx(txn *badger.Txn, prefix stri
 	it := txn.NewIterator(opts)
 	defer it.Close()
 	
+	// 关键修复：先收集所有要删除的键，避免在迭代中删除导致迭代器状态混乱
+	var keysToDelete [][]byte
 	for it.Seek([]byte(prefix)); it.ValidForPrefix([]byte(prefix)); it.Next() {
 		item := it.Item()
-		if err := txn.Delete(item.Key()); err != nil {
+		key := make([]byte, len(item.Key()))
+		copy(key, item.Key()) // 复制键，避免引用问题
+		keysToDelete = append(keysToDelete, key)
+	}
+	
+	// 迭代器完成后，安全地删除所有收集到的键
+	deletedCount := 0
+	for _, key := range keysToDelete {
+		if err := txn.Delete(key); err != nil {
 			return err
 		}
+		deletedCount++
 	}
 	
 	return nil
