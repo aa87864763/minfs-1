@@ -31,6 +31,7 @@ const (
 	MetaServerService_GetReplicationInfo_FullMethodName = "/dfs_project.MetaServerService/GetReplicationInfo"
 	MetaServerService_Heartbeat_FullMethodName          = "/dfs_project.MetaServerService/Heartbeat"
 	MetaServerService_SyncWAL_FullMethodName            = "/dfs_project.MetaServerService/SyncWAL"
+	MetaServerService_RequestWALSync_FullMethodName     = "/dfs_project.MetaServerService/RequestWALSync"
 	MetaServerService_GetLeader_FullMethodName          = "/dfs_project.MetaServerService/GetLeader"
 )
 
@@ -60,6 +61,8 @@ type MetaServerServiceClient interface {
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 	// 用于主从节点之间，实时同步元数据操作日志 (WAL)
 	SyncWAL(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[LogEntry, SimpleResponse], error)
+	// 节点重连后向leader申请WAL同步
+	RequestWALSync(ctx context.Context, in *RequestWALSyncRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LogEntry], error)
 	// 获取主从信息 (HA 支持)
 	GetLeader(ctx context.Context, in *GetLeaderRequest, opts ...grpc.CallOption) (*GetLeaderResponse, error)
 }
@@ -175,6 +178,25 @@ func (c *metaServerServiceClient) SyncWAL(ctx context.Context, opts ...grpc.Call
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type MetaServerService_SyncWALClient = grpc.ClientStreamingClient[LogEntry, SimpleResponse]
 
+func (c *metaServerServiceClient) RequestWALSync(ctx context.Context, in *RequestWALSyncRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LogEntry], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &MetaServerService_ServiceDesc.Streams[1], MetaServerService_RequestWALSync_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[RequestWALSyncRequest, LogEntry]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type MetaServerService_RequestWALSyncClient = grpc.ServerStreamingClient[LogEntry]
+
 func (c *metaServerServiceClient) GetLeader(ctx context.Context, in *GetLeaderRequest, opts ...grpc.CallOption) (*GetLeaderResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetLeaderResponse)
@@ -211,6 +233,8 @@ type MetaServerServiceServer interface {
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	// 用于主从节点之间，实时同步元数据操作日志 (WAL)
 	SyncWAL(grpc.ClientStreamingServer[LogEntry, SimpleResponse]) error
+	// 节点重连后向leader申请WAL同步
+	RequestWALSync(*RequestWALSyncRequest, grpc.ServerStreamingServer[LogEntry]) error
 	// 获取主从信息 (HA 支持)
 	GetLeader(context.Context, *GetLeaderRequest) (*GetLeaderResponse, error)
 	mustEmbedUnimplementedMetaServerServiceServer()
@@ -252,6 +276,9 @@ func (UnimplementedMetaServerServiceServer) Heartbeat(context.Context, *Heartbea
 }
 func (UnimplementedMetaServerServiceServer) SyncWAL(grpc.ClientStreamingServer[LogEntry, SimpleResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method SyncWAL not implemented")
+}
+func (UnimplementedMetaServerServiceServer) RequestWALSync(*RequestWALSyncRequest, grpc.ServerStreamingServer[LogEntry]) error {
+	return status.Errorf(codes.Unimplemented, "method RequestWALSync not implemented")
 }
 func (UnimplementedMetaServerServiceServer) GetLeader(context.Context, *GetLeaderRequest) (*GetLeaderResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLeader not implemented")
@@ -446,6 +473,17 @@ func _MetaServerService_SyncWAL_Handler(srv interface{}, stream grpc.ServerStrea
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type MetaServerService_SyncWALServer = grpc.ClientStreamingServer[LogEntry, SimpleResponse]
 
+func _MetaServerService_RequestWALSync_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(RequestWALSyncRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(MetaServerServiceServer).RequestWALSync(m, &grpc.GenericServerStream[RequestWALSyncRequest, LogEntry]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type MetaServerService_RequestWALSyncServer = grpc.ServerStreamingServer[LogEntry]
+
 func _MetaServerService_GetLeader_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetLeaderRequest)
 	if err := dec(in); err != nil {
@@ -517,6 +555,11 @@ var MetaServerService_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "SyncWAL",
 			Handler:       _MetaServerService_SyncWAL_Handler,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "RequestWALSync",
+			Handler:       _MetaServerService_RequestWALSync_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "metaserver.proto",

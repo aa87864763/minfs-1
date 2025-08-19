@@ -572,6 +572,15 @@ func (ws *WALService) GetCurrentLogIndex() uint64 {
 	return ws.nextLogIndex - 1
 }
 
+// UpdateNextLogIndex 更新下一个日志索引（用于同步时）
+func (ws *WALService) UpdateNextLogIndex(nextIndex uint64) {
+	ws.mutex.Lock()
+	defer ws.mutex.Unlock()
+	if nextIndex > ws.nextLogIndex {
+		ws.nextLogIndex = nextIndex
+	}
+}
+
 // Close 关闭WAL服务
 func (ws *WALService) Close() error {
 	ws.followerMutex.Lock()
@@ -599,6 +608,164 @@ func (ws *WALService) IsLeader() bool {
 		return false
 	}
 	return ws.leaderElection.IsLeader()
+}
+
+// RequestWALSyncFromLeader 从leader请求WAL同步（当节点重新加入集群时）
+func (ws *WALService) RequestWALSyncFromLeader(leaderAddr string, nodeID string, lastLogIndex uint64) error {
+	log.Printf("Requesting WAL sync from leader %s, node %s, from index %d", leaderAddr, nodeID, lastLogIndex)
+	
+	// 创建连接到leader的gRPC客户端
+	conn, err := grpc.Dial(leaderAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return fmt.Errorf("failed to connect to leader %s: %v", leaderAddr, err)
+	}
+	defer conn.Close()
+	
+	client := pb.NewMetaServerServiceClient(conn)
+	
+	// 发送WAL同步请求
+	req := &pb.RequestWALSyncRequest{
+		NodeId:       nodeID,
+		LastLogIndex: lastLogIndex,
+		Reason:       "rejoin_cluster",
+	}
+	
+	stream, err := client.RequestWALSync(context.Background(), req)
+	if err != nil {
+		return fmt.Errorf("failed to request WAL sync: %v", err)
+	}
+	
+	syncedCount := 0
+	fullReset := false
+	
+	// 接收WAL条目流
+	for {
+		entry, err := stream.Recv()
+		if err != nil {
+			if err.Error() == "EOF" {
+				log.Printf("WAL sync completed from leader, synced %d entries (full reset: %v)", syncedCount, fullReset)
+				break
+			}
+			return fmt.Errorf("failed to receive WAL entry: %v", err)
+		}
+		
+		// 检查是否需要完全重置（第一个条目的索引为1表示需要完全重置）
+		if syncedCount == 0 && entry.LogIndex == 1 {
+			log.Printf("Detected log divergence, performing full WAL reset")
+			fullReset = true
+			
+			// 清空现有WAL数据
+			err = ws.clearAllWALEntries()
+			if err != nil {
+				return fmt.Errorf("failed to clear WAL entries: %v", err)
+			}
+			
+			// 重置日志索引
+			ws.mutex.Lock()
+			ws.nextLogIndex = 1
+			ws.mutex.Unlock()
+			
+			log.Printf("WAL database cleared, ready for complete resync")
+		}
+		
+		// 将WAL条目写入本地存储但不执行
+		err = ws.WriteLogEntry(entry)
+		if err != nil {
+			return fmt.Errorf("failed to write WAL entry %d: %v", entry.LogIndex, err)
+		}
+		
+		// 更新下一个日志索引
+		ws.mutex.Lock()
+		if entry.LogIndex >= ws.nextLogIndex {
+			ws.nextLogIndex = entry.LogIndex + 1
+		}
+		ws.mutex.Unlock()
+		
+		syncedCount++
+		log.Printf("Synced WAL entry %d from leader, operation: %v", entry.LogIndex, entry.Operation)
+	}
+	
+	log.Printf("WAL sync from leader completed successfully, total entries: %d (full reset: %v)", syncedCount, fullReset)
+	return nil
+}
+
+// GetAllLogEntries 获取所有WAL日志条目（用于leader响应同步请求）
+func (ws *WALService) GetAllLogEntries(fromIndex uint64) ([]*pb.LogEntry, error) {
+	var entries []*pb.LogEntry
+	
+	// 首先检查是否存在日志分叉
+	leaderMaxIndex := ws.GetCurrentLogIndex()
+	if fromIndex > leaderMaxIndex {
+		log.Printf("Log divergence detected: follower index %d > leader index %d, returning full WAL", fromIndex, leaderMaxIndex)
+		// 日志分叉：follower的索引比leader还大，需要完全重置
+		// 返回从索引1开始的所有条目
+		fromIndex = 1
+	}
+	
+	err := ws.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer it.Close()
+		
+		startKey := fmt.Sprintf("wal:%010d", fromIndex)
+		prefix := []byte("wal:")
+		
+		for it.Seek([]byte(startKey)); it.ValidForPrefix(prefix); it.Next() {
+			item := it.Item()
+			
+			err := item.Value(func(val []byte) error {
+				var entry pb.LogEntry
+				if err := proto.Unmarshal(val, &entry); err != nil {
+					return err
+				}
+				entries = append(entries, &entry)
+				return nil
+			})
+			
+			if err != nil {
+				return err
+			}
+		}
+		
+		return nil
+	})
+	
+	if err != nil {
+		return nil, err
+	}
+	
+	if fromIndex == 1 && len(entries) > 0 {
+		log.Printf("Returning FULL WAL reset: %d entries starting from index 1 (divergence fix)", len(entries))
+	} else {
+		log.Printf("Retrieved %d WAL entries starting from index %d (incremental sync)", len(entries), fromIndex)
+	}
+	return entries, nil
+}
+
+// ReplayWALFromIndex 从指定索引开始回放WAL（仅在当选leader时使用）
+func (ws *WALService) ReplayWALFromIndex(startIndex uint64, metadataService *MetadataService) error {
+	if !ws.IsLeader() {
+		return fmt.Errorf("only leader can replay WAL")
+	}
+	
+	log.Printf("Starting WAL replay from index %d", startIndex)
+	
+	entries, err := ws.GetAllLogEntries(startIndex)
+	if err != nil {
+		return fmt.Errorf("failed to get WAL entries: %v", err)
+	}
+	
+	replayedCount := 0
+	for _, entry := range entries {
+		err = ws.ReplayLogEntry(entry, metadataService)
+		if err != nil {
+			log.Printf("Failed to replay WAL entry %d: %v", entry.LogIndex, err)
+			return err
+		}
+		replayedCount++
+	}
+	
+	log.Printf("WAL replay completed, replayed %d entries", replayedCount)
+	return nil
 }
 
 // createFileForReplay 在WAL回放时创建文件的基本元数据
@@ -696,4 +863,48 @@ func (ws *WALService) createFileForReplay(metadataService *MetadataService, path
 		
 		return nil
 	})
+}
+
+// clearAllWALEntries 清空所有WAL条目（用于分叉恢复时的强制重置）
+func (ws *WALService) clearAllWALEntries() error {
+	log.Printf("Clearing all WAL entries due to log divergence")
+	
+	// 收集所有WAL keys
+	var keysToDelete []string
+	
+	err := ws.db.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer it.Close()
+		
+		prefix := []byte("wal:")
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			item := it.Item()
+			key := string(item.Key())
+			keysToDelete = append(keysToDelete, key)
+		}
+		
+		return nil
+	})
+	
+	if err != nil {
+		return fmt.Errorf("failed to collect WAL keys: %v", err)
+	}
+	
+	// 删除所有WAL keys
+	err = ws.db.Update(func(txn *badger.Txn) error {
+		for _, key := range keysToDelete {
+			err := txn.Delete([]byte(key))
+			if err != nil {
+				return fmt.Errorf("failed to delete WAL key %s: %v", key, err)
+			}
+		}
+		return nil
+	})
+	
+	if err != nil {
+		return fmt.Errorf("failed to delete WAL entries: %v", err)
+	}
+	
+	log.Printf("Successfully cleared %d WAL entries", len(keysToDelete))
+	return nil
 }

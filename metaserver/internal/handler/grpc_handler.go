@@ -636,17 +636,27 @@ func (h *MetaServerHandler) SyncWAL(stream pb.MetaServerService_SyncWALServer) e
 			continue
 		}
 		
-		// 回放这个日志条目
-		err = walService.ReplayLogEntry(entry, h.metadataService)
-		if err != nil {
-			log.Printf("Failed to replay WAL entry %d: %v", entry.LogIndex, err)
-			return stream.SendAndClose(&pb.SimpleResponse{
-				Success: false,
-				Message: fmt.Sprintf("Failed to replay entry %d: %v", entry.LogIndex, err),
-			})
+		// 检查当前节点是否为leader
+		isLeader := h.isLeader()
+		
+		if isLeader {
+			// 作为leader：回放WAL条目（执行操作）
+			err = walService.ReplayLogEntry(entry, h.metadataService)
+			if err != nil {
+				log.Printf("Failed to replay WAL entry %d: %v", entry.LogIndex, err)
+				return stream.SendAndClose(&pb.SimpleResponse{
+					Success: false,
+					Message: fmt.Sprintf("Failed to replay entry %d: %v", entry.LogIndex, err),
+				})
+			}
+			log.Printf("SyncWAL (Leader): Replayed entry %d, operation: %v", entry.LogIndex, entry.Operation)
+		} else {
+			// 作为follower：只存储WAL条目，不执行操作
+			log.Printf("SyncWAL (Follower): Storing entry %d without execution, operation: %v", 
+				entry.LogIndex, entry.Operation)
 		}
 		
-		// 将日志条目写入本地WAL（作为follower）
+		// 将日志条目写入本地WAL存储
 		err = walService.WriteLogEntry(entry)
 		if err != nil {
 			log.Printf("Failed to write WAL entry %d locally: %v", entry.LogIndex, err)
@@ -656,9 +666,63 @@ func (h *MetaServerHandler) SyncWAL(stream pb.MetaServerService_SyncWALServer) e
 			})
 		}
 		
+		// 更新下一个日志索引
+		walService.UpdateNextLogIndex(entry.LogIndex + 1)
+		
 		processedCount++
-		log.Printf("SyncWAL: Processed entry %d, operation: %v", entry.LogIndex, entry.Operation)
+		log.Printf("SyncWAL: Processed entry %d, operation: %v, isLeader: %v", 
+			entry.LogIndex, entry.Operation, isLeader)
 	}
+}
+
+// RequestWALSync 处理节点重连后的WAL同步请求
+func (h *MetaServerHandler) RequestWALSync(req *pb.RequestWALSyncRequest, stream pb.MetaServerService_RequestWALSyncServer) error {
+	log.Printf("RequestWALSync request from node %s, from index %d, reason: %s", 
+		req.NodeId, req.LastLogIndex, req.Reason)
+	
+	// 检查当前节点是否为leader
+	if !h.isLeader() {
+		return fmt.Errorf("only leader can handle WAL sync requests")
+	}
+	
+	walService := h.getWALService()
+	if walService == nil {
+		return fmt.Errorf("WAL service not available")
+	}
+	
+	// 获取从指定索引开始的所有WAL条目
+	startIndex := req.LastLogIndex + 1
+	if req.LastLogIndex == 0 {
+		startIndex = 1 // 从第一个日志开始
+	}
+	
+	entries, err := walService.GetAllLogEntries(startIndex)
+	if err != nil {
+		log.Printf("Failed to get WAL entries from index %d: %v", startIndex, err)
+		return fmt.Errorf("failed to get WAL entries: %v", err)
+	}
+	
+	log.Printf("Sending %d WAL entries to node %s starting from index %d", 
+		len(entries), req.NodeId, startIndex)
+	
+	// 发送WAL条目流
+	sentCount := 0
+	for _, entry := range entries {
+		err = stream.Send(entry)
+		if err != nil {
+			log.Printf("Failed to send WAL entry %d to node %s: %v", entry.LogIndex, req.NodeId, err)
+			return fmt.Errorf("failed to send WAL entry: %v", err)
+		}
+		sentCount++
+		
+		// 每发送100个条目记录一次进度
+		if sentCount%100 == 0 {
+			log.Printf("Sent %d/%d WAL entries to node %s", sentCount, len(entries), req.NodeId)
+		}
+	}
+	
+	log.Printf("WAL sync completed for node %s, sent %d entries", req.NodeId, sentCount)
+	return nil
 }
 
 // GetLeader 获取主从信息 (HA 支持)
@@ -673,8 +737,13 @@ func (h *MetaServerHandler) GetLeader(ctx context.Context, req *pb.GetLeaderRequ
 		Followers: clusterInfo.SlaveMetaServer,
 	}
 	
-	log.Printf("GetLeader response: Leader=%s:%d, Followers=%d", 
-		response.Leader.Host, response.Leader.Port, len(response.Followers))
+	// 安全地记录leader信息，避免空指针异常
+	if response.Leader != nil {
+		log.Printf("GetLeader response: Leader=%s:%d, Followers=%d", 
+			response.Leader.Host, response.Leader.Port, len(response.Followers))
+	} else {
+		log.Printf("GetLeader response: No leader available, Followers=%d", len(response.Followers))
+	}
 	
 	return response, nil
 }

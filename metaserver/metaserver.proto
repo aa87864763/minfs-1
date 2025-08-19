@@ -43,6 +43,9 @@ service MetaServerService {
     // 用于主从节点之间，实时同步元数据操作日志 (WAL)
     rpc SyncWAL(stream LogEntry) returns (SimpleResponse);
     
+    // 节点重连后向leader申请WAL同步
+    rpc RequestWALSync(RequestWALSyncRequest) returns (stream LogEntry);
+    
     // 获取主从信息 (HA 支持)
     rpc GetLeader(GetLeaderRequest) returns (GetLeaderResponse);
 }
@@ -301,4 +304,11 @@ message SetBlockMappingOperation {
     uint64 inode_id = 1;       // 文件inode ID
     uint64 block_index = 2;    // 块索引
     BlockLocations block_locs = 3;  // 块位置信息
+}
+
+// 请求WAL同步的消息
+message RequestWALSyncRequest {
+    string node_id = 1;        // 请求同步的节点ID
+    uint64 last_log_index = 2; // 最后同步的日志索引，0表示从头开始
+    string reason = 3;         // 同步原因，如"rejoin_cluster"
 }

@@ -98,14 +98,34 @@ func main() {
 	
 	log.Printf("Node %s initialized and ready to start", currentNodeID)
 	
-	// 启动Leader Election
-	if err := leaderElection.Start(); err != nil {
-		log.Fatalf("Failed to start leader election: %v", err)
-	}
+	// 先设置所有回调函数
+	// 设置leader变化回调
+	leaderElection.SetLeaderChangeCallback(func(isLeader bool) {
+		if isLeader {
+			log.Printf("Node %s became leader, replaying WAL logs", currentNodeID)
+			if err := replayWALLogs(walService, metadataService); err != nil {
+				log.Printf("Warning: Failed to replay WAL logs: %v", err)
+			}
+		}
+	})
 	
-	// 回放WAL日志以恢复状态
-	if err := replayWALLogs(walService, metadataService); err != nil {
-		log.Printf("Warning: Failed to replay WAL logs: %v", err)
+	// 设置WAL同步回调（当发现新leader时触发）
+	leaderElection.SetWALSyncCallback(func() {
+		log.Printf("Node %s triggered WAL sync from leader", currentNodeID)
+		if err := requestWALSyncFromLeader(walService, leaderElection, currentNodeID); err != nil {
+			log.Printf("Warning: Failed to sync WAL from leader: %v", err)
+		} else {
+			leaderElection.MarkWALSyncCompleted()
+			log.Printf("Node %s completed WAL sync from leader", currentNodeID)
+		}
+	})
+	
+	// 简化启动逻辑：所有节点都以follower模式启动
+	// RegisterAsFollower会自动参与选举，如果没有leader会自动成为leader
+	log.Printf("Node %s starting in follower mode (will auto-elect if no leader)", currentNodeID)
+	
+	if err := leaderElection.RegisterAsFollower(); err != nil {
+		log.Fatalf("Failed to register as follower: %v", err)
 	}
 
 	// 初始化 gRPC Handler
@@ -191,6 +211,48 @@ func main() {
 		log.Println("Shutdown timeout reached, forcing exit")
 		grpcServer.Stop() // 强制停止gRPC服务器
 	}
+}
+
+// checkExistingLeader 检查是否已存在leader（直接从etcd查询，避免竞态条件）
+func checkExistingLeader(leaderElection *service.LeaderElection) (bool, error) {
+	log.Println("Checking for existing leader directly from etcd...")
+	
+	// 直接从etcd查询，不依赖本地缓存
+	hasLeader := leaderElection.CheckLeaderDirectly()
+	if hasLeader {
+		log.Println("Found existing leader in etcd")
+		return true, nil
+	}
+	
+	log.Println("No existing leader found in etcd")
+	return false, nil
+}
+
+// requestWALSyncFromLeader 从leader请求WAL同步
+func requestWALSyncFromLeader(walService *service.WALService, leaderElection *service.LeaderElection, nodeID string) error {
+	log.Println("Requesting WAL sync from leader...")
+	
+	// 获取当前leader信息
+	leaderInfo := leaderElection.GetCurrentLeader()
+	if leaderInfo == nil {
+		return fmt.Errorf("no leader available")
+	}
+	
+	leaderAddr := fmt.Sprintf("%s:%d", leaderInfo.Host, leaderInfo.Port)
+	
+	// 获取本地最后的日志索引
+	lastLogIndex := walService.GetCurrentLogIndex()
+	
+	log.Printf("Requesting WAL sync from leader %s, last local index: %d", leaderAddr, lastLogIndex)
+	
+	// 请求WAL同步
+	err := walService.RequestWALSyncFromLeader(leaderAddr, nodeID, lastLogIndex)
+	if err != nil {
+		return fmt.Errorf("failed to sync WAL from leader: %v", err)
+	}
+	
+	log.Println("WAL sync from leader completed successfully")
+	return nil
 }
 
 // replayWALLogs 回放WAL日志

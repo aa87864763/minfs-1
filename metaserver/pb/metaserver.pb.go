@@ -2273,6 +2273,67 @@ func (x *SetBlockMappingOperation) GetBlockLocs() *BlockLocations {
 	return nil
 }
 
+// 请求WAL同步的消息
+type RequestWALSyncRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`                      // 请求同步的节点ID
+	LastLogIndex  uint64                 `protobuf:"varint,2,opt,name=last_log_index,json=lastLogIndex,proto3" json:"last_log_index,omitempty"` // 最后同步的日志索引，0表示从头开始
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`                                    // 同步原因，如"rejoin_cluster"
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestWALSyncRequest) Reset() {
+	*x = RequestWALSyncRequest{}
+	mi := &file_metaserver_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestWALSyncRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestWALSyncRequest) ProtoMessage() {}
+
+func (x *RequestWALSyncRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_metaserver_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestWALSyncRequest.ProtoReflect.Descriptor instead.
+func (*RequestWALSyncRequest) Descriptor() ([]byte, []int) {
+	return file_metaserver_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *RequestWALSyncRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *RequestWALSyncRequest) GetLastLogIndex() uint64 {
+	if x != nil {
+		return x.LastLogIndex
+	}
+	return 0
+}
+
+func (x *RequestWALSyncRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
 var File_metaserver_proto protoreflect.FileDescriptor
 
 const file_metaserver_proto_rawDesc = "" +
@@ -2424,7 +2485,11 @@ const file_metaserver_proto_rawDesc = "" +
 	"\vblock_index\x18\x02 \x01(\x04R\n" +
 	"blockIndex\x12:\n" +
 	"\n" +
-	"block_locs\x18\x03 \x01(\v2\x1b.dfs_project.BlockLocationsR\tblockLocs*<\n" +
+	"block_locs\x18\x03 \x01(\v2\x1b.dfs_project.BlockLocationsR\tblockLocs\"n\n" +
+	"\x15RequestWALSyncRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12$\n" +
+	"\x0elast_log_index\x18\x02 \x01(\x04R\flastLogIndex\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason*<\n" +
 	"\bFileType\x12\v\n" +
 	"\aUnknown\x10\x00\x12\n" +
 	"\n" +
@@ -2437,7 +2502,7 @@ const file_metaserver_proto_rawDesc = "" +
 	"\vUPDATE_NODE\x10\x02\x12\x12\n" +
 	"\x0eFINALIZE_WRITE\x10\x03\x12\x19\n" +
 	"\x15UPDATE_BLOCK_LOCATION\x10\x04\x12\x15\n" +
-	"\x11SET_BLOCK_MAPPING\x10\x052\xa3\a\n" +
+	"\x11SET_BLOCK_MAPPING\x10\x052\xf2\a\n" +
 	"\x11MetaServerService\x12I\n" +
 	"\n" +
 	"CreateNode\x12\x1e.dfs_project.CreateNodeRequest\x1a\x1b.dfs_project.SimpleResponse\x12P\n" +
@@ -2450,7 +2515,8 @@ const file_metaserver_proto_rawDesc = "" +
 	"\x0eGetClusterInfo\x12\".dfs_project.GetClusterInfoRequest\x1a#.dfs_project.GetClusterInfoResponse\x12e\n" +
 	"\x12GetReplicationInfo\x12&.dfs_project.GetReplicationInfoRequest\x1a'.dfs_project.GetReplicationInfoResponse\x12J\n" +
 	"\tHeartbeat\x12\x1d.dfs_project.HeartbeatRequest\x1a\x1e.dfs_project.HeartbeatResponse\x12?\n" +
-	"\aSyncWAL\x12\x15.dfs_project.LogEntry\x1a\x1b.dfs_project.SimpleResponse(\x01\x12J\n" +
+	"\aSyncWAL\x12\x15.dfs_project.LogEntry\x1a\x1b.dfs_project.SimpleResponse(\x01\x12M\n" +
+	"\x0eRequestWALSync\x12\".dfs_project.RequestWALSyncRequest\x1a\x15.dfs_project.LogEntry0\x01\x12J\n" +
 	"\tGetLeader\x12\x1d.dfs_project.GetLeaderRequest\x1a\x1e.dfs_project.GetLeaderResponseB\x06Z\x04./pbb\x06proto3"
 
 var (
@@ -2466,7 +2532,7 @@ func file_metaserver_proto_rawDescGZIP() []byte {
 }
 
 var file_metaserver_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_metaserver_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
+var file_metaserver_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
 var file_metaserver_proto_goTypes = []any{
 	(FileType)(0),                        // 0: dfs_project.FileType
 	(WALOperationType)(0),                // 1: dfs_project.WALOperationType
@@ -2506,6 +2572,7 @@ var file_metaserver_proto_goTypes = []any{
 	(*FinalizeWriteOperation)(nil),       // 35: dfs_project.FinalizeWriteOperation
 	(*UpdateBlockLocationOperation)(nil), // 36: dfs_project.UpdateBlockLocationOperation
 	(*SetBlockMappingOperation)(nil),     // 37: dfs_project.SetBlockMappingOperation
+	(*RequestWALSyncRequest)(nil),        // 38: dfs_project.RequestWALSyncRequest
 }
 var file_metaserver_proto_depIdxs = []int32{
 	0,  // 0: dfs_project.StatInfo.type:type_name -> dfs_project.FileType
@@ -2540,20 +2607,22 @@ var file_metaserver_proto_depIdxs = []int32{
 	25, // 29: dfs_project.MetaServerService.GetReplicationInfo:input_type -> dfs_project.GetReplicationInfoRequest
 	22, // 30: dfs_project.MetaServerService.Heartbeat:input_type -> dfs_project.HeartbeatRequest
 	31, // 31: dfs_project.MetaServerService.SyncWAL:input_type -> dfs_project.LogEntry
-	29, // 32: dfs_project.MetaServerService.GetLeader:input_type -> dfs_project.GetLeaderRequest
-	10, // 33: dfs_project.MetaServerService.CreateNode:output_type -> dfs_project.SimpleResponse
-	13, // 34: dfs_project.MetaServerService.GetNodeInfo:output_type -> dfs_project.GetNodeInfoResponse
-	15, // 35: dfs_project.MetaServerService.ListDirectory:output_type -> dfs_project.ListDirectoryResponse
-	10, // 36: dfs_project.MetaServerService.DeleteNode:output_type -> dfs_project.SimpleResponse
-	18, // 37: dfs_project.MetaServerService.GetBlockLocations:output_type -> dfs_project.GetBlockLocationsResponse
-	10, // 38: dfs_project.MetaServerService.FinalizeWrite:output_type -> dfs_project.SimpleResponse
-	21, // 39: dfs_project.MetaServerService.GetClusterInfo:output_type -> dfs_project.GetClusterInfoResponse
-	28, // 40: dfs_project.MetaServerService.GetReplicationInfo:output_type -> dfs_project.GetReplicationInfoResponse
-	24, // 41: dfs_project.MetaServerService.Heartbeat:output_type -> dfs_project.HeartbeatResponse
-	10, // 42: dfs_project.MetaServerService.SyncWAL:output_type -> dfs_project.SimpleResponse
-	30, // 43: dfs_project.MetaServerService.GetLeader:output_type -> dfs_project.GetLeaderResponse
-	33, // [33:44] is the sub-list for method output_type
-	22, // [22:33] is the sub-list for method input_type
+	38, // 32: dfs_project.MetaServerService.RequestWALSync:input_type -> dfs_project.RequestWALSyncRequest
+	29, // 33: dfs_project.MetaServerService.GetLeader:input_type -> dfs_project.GetLeaderRequest
+	10, // 34: dfs_project.MetaServerService.CreateNode:output_type -> dfs_project.SimpleResponse
+	13, // 35: dfs_project.MetaServerService.GetNodeInfo:output_type -> dfs_project.GetNodeInfoResponse
+	15, // 36: dfs_project.MetaServerService.ListDirectory:output_type -> dfs_project.ListDirectoryResponse
+	10, // 37: dfs_project.MetaServerService.DeleteNode:output_type -> dfs_project.SimpleResponse
+	18, // 38: dfs_project.MetaServerService.GetBlockLocations:output_type -> dfs_project.GetBlockLocationsResponse
+	10, // 39: dfs_project.MetaServerService.FinalizeWrite:output_type -> dfs_project.SimpleResponse
+	21, // 40: dfs_project.MetaServerService.GetClusterInfo:output_type -> dfs_project.GetClusterInfoResponse
+	28, // 41: dfs_project.MetaServerService.GetReplicationInfo:output_type -> dfs_project.GetReplicationInfoResponse
+	24, // 42: dfs_project.MetaServerService.Heartbeat:output_type -> dfs_project.HeartbeatResponse
+	10, // 43: dfs_project.MetaServerService.SyncWAL:output_type -> dfs_project.SimpleResponse
+	31, // 44: dfs_project.MetaServerService.RequestWALSync:output_type -> dfs_project.LogEntry
+	30, // 45: dfs_project.MetaServerService.GetLeader:output_type -> dfs_project.GetLeaderResponse
+	34, // [34:46] is the sub-list for method output_type
+	22, // [22:34] is the sub-list for method input_type
 	22, // [22:22] is the sub-list for extension type_name
 	22, // [22:22] is the sub-list for extension extendee
 	0,  // [0:22] is the sub-list for field type_name
@@ -2570,7 +2639,7 @@ func file_metaserver_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_metaserver_proto_rawDesc), len(file_metaserver_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   35,
+			NumMessages:   36,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

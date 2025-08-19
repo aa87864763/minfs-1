@@ -32,6 +32,7 @@ type LeaderElection struct {
 	isLeader      bool
 	currentLeader *MetaServerNode
 	followers     []*MetaServerNode
+	needsWALSync  bool // 标记是否需要WAL同步
 	
 	// 控制相关
 	mutex         sync.RWMutex
@@ -41,6 +42,7 @@ type LeaderElection struct {
 	
 	// 回调函数
 	onLeaderChange func(isLeader bool)
+	onWALSyncNeeded func() // WAL同步回调
 	
 	// WAL服务引用
 	walService *WALService
@@ -117,6 +119,32 @@ func (le *LeaderElection) Start() error {
 	return nil
 }
 
+// RegisterAsFollower 注册为follower节点（参与选举但优先同步WAL）
+func (le *LeaderElection) RegisterAsFollower() error {
+	// 注册节点信息
+	if err := le.registerNode(); err != nil {
+		return fmt.Errorf("failed to register node: %v", err)
+	}
+	
+	// 创建campaign context
+	le.campaignCtx, le.campaignCancel = context.WithCancel(context.Background())
+	
+	// 标记为需要WAL同步的follower
+	le.mutex.Lock()
+	le.needsWALSync = true
+	le.mutex.Unlock()
+	
+	// 启动选举goroutine（会参与Campaign但在成为leader前先同步WAL）
+	go le.campaignLoop()
+	
+	// 启动监听goroutine
+	go le.watchLeader()
+	go le.watchNodes()
+	
+	log.Printf("Node %s registered as follower and will participate in election after WAL sync", le.nodeID)
+	return nil
+}
+
 // campaignLoop 选举循环 - 使用etcd Campaign API
 func (le *LeaderElection) campaignLoop() {
 	for {
@@ -141,11 +169,36 @@ func (le *LeaderElection) campaignLoop() {
 				continue
 			}
 			
+			log.Printf("Node %s won campaign, checking if WAL sync needed", le.nodeID)
+			
+			// 检查是否需要WAL同步
+			le.mutex.Lock()
+			needsSync := le.needsWALSync
+			le.mutex.Unlock()
+			
+			if needsSync {
+				log.Printf("Node %s needs WAL sync before becoming leader, triggering sync", le.nodeID)
+				// 触发WAL同步回调
+				if le.onWALSyncNeeded != nil {
+					le.onWALSyncNeeded()
+				}
+				
+				// 等待WAL同步完成的信号
+				// 这里可以添加一个channel来等待同步完成，或者让同步完成后调用一个方法
+				// 暂时简单等待一下让同步有机会完成
+				time.Sleep(2 * time.Second)
+				
+				le.mutex.Lock()
+				le.needsWALSync = false
+				le.mutex.Unlock()
+			}
+			
 			le.mutex.Lock()
 			le.isLeader = true
 			le.mutex.Unlock()
 			
 			log.Printf("Node %s successfully became leader", le.nodeID)
+			
 			if le.onLeaderChange != nil {
 				le.onLeaderChange(true)
 			}
@@ -311,10 +364,20 @@ func (le *LeaderElection) updateCurrentLeaderFromInfo(leaderInfo string) {
 		}
 		
 		le.mutex.Lock()
+		oldLeader := le.currentLeader
 		le.currentLeader = &leaderNode
+		isLeader := le.isLeader
 		le.mutex.Unlock()
 		
 		log.Printf("Leader updated: %s at %s", nodeID, nodeAddr)
+		
+		// 如果这是新发现的leader且当前节点不是leader，触发WAL同步
+		if oldLeader == nil && !isLeader && nodeID != le.nodeID {
+			log.Printf("New leader discovered, triggering WAL sync from %s", nodeID)
+			if le.onWALSyncNeeded != nil {
+				go le.onWALSyncNeeded() // 异步执行WAL同步
+			}
+		}
 	}
 }
 
@@ -403,20 +466,87 @@ func (le *LeaderElection) updateFollowers() {
 // GetCurrentLeader 获取当前leader信息
 func (le *LeaderElection) GetCurrentLeader() *pb.MetaServerMsg {
 	le.mutex.RLock()
-	defer le.mutex.RUnlock()
+	currentLeader := le.currentLeader
+	le.mutex.RUnlock()
 
-	if le.currentLeader == nil {
-		// 如果没有leader，返回默认值
-		return &pb.MetaServerMsg{
-			Host: "localhost",
-			Port: 9090,
-		}
+	// 如果本地没有缓存leader信息，尝试从etcd获取
+	if currentLeader == nil {
+		le.refreshLeaderFromETCD()
+		
+		le.mutex.RLock()
+		currentLeader = le.currentLeader
+		le.mutex.RUnlock()
+	}
+	
+	if currentLeader == nil {
+		// 仍然没有leader，返回nil表示没有leader
+		return nil
 	}
 
 	return &pb.MetaServerMsg{
-		Host: le.currentLeader.Host,
-		Port: le.currentLeader.Port,
+		Host: currentLeader.Host,
+		Port: currentLeader.Port,
 	}
+}
+
+// refreshLeaderFromETCD 从etcd刷新leader信息
+func (le *LeaderElection) refreshLeaderFromETCD() {
+	if le.election == nil {
+		return
+	}
+	
+	// 从etcd获取当前leader
+	resp, err := le.election.Leader(context.Background())
+	if err != nil {
+		log.Printf("Failed to get leader from etcd: %v", err)
+		return
+	}
+	
+	if len(resp.Kvs) == 0 {
+		log.Printf("No leader found in etcd")
+		return
+	}
+	
+	// 解析leader信息
+	leaderInfo := string(resp.Kvs[0].Value)
+	le.updateCurrentLeaderFromInfo(leaderInfo)
+}
+
+// CheckLeaderDirectly 直接从etcd检查是否存在leader（同步查询，避免竞态条件）
+func (le *LeaderElection) CheckLeaderDirectly() bool {
+	if le.etcdClient == nil {
+		log.Printf("ETCD client not initialized, cannot check leader")
+		return false
+	}
+	
+	// 直接从etcd查询election key，不依赖election对象
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	
+	// 查询election prefix下的所有keys
+	electionPrefix := "/minfs/metaserver/election"
+	resp, err := le.etcdClient.Get(ctx, electionPrefix, clientv3.WithPrefix(), clientv3.WithSort(clientv3.SortByCreateRevision, clientv3.SortAscend))
+	if err != nil {
+		log.Printf("Failed to check leader directly from etcd: %v", err)
+		return false
+	}
+	
+	if len(resp.Kvs) == 0 {
+		log.Printf("No leader found in etcd during direct check (no election keys)")
+		return false
+	}
+	
+	// 第一个key就是当前的leader
+	leaderKey := string(resp.Kvs[0].Key)
+	leaderValue := string(resp.Kvs[0].Value)
+	log.Printf("Direct check found leader in etcd: key=%s, value=%s", leaderKey, leaderValue)
+	
+	// 顺便更新本地缓存
+	if leaderValue != "" {
+		le.updateCurrentLeaderFromInfo(leaderValue)
+	}
+	
+	return true
 }
 
 // GetFollowers 获取followers列表
@@ -445,6 +575,19 @@ func (le *LeaderElection) IsLeader() bool {
 // SetLeaderChangeCallback 设置leader变化回调
 func (le *LeaderElection) SetLeaderChangeCallback(callback func(bool)) {
 	le.onLeaderChange = callback
+}
+
+// SetWALSyncCallback 设置WAL同步回调
+func (le *LeaderElection) SetWALSyncCallback(callback func()) {
+	le.onWALSyncNeeded = callback
+}
+
+// MarkWALSyncCompleted 标记WAL同步完成
+func (le *LeaderElection) MarkWALSyncCompleted() {
+	le.mutex.Lock()
+	defer le.mutex.Unlock()
+	le.needsWALSync = false
+	log.Printf("Node %s WAL sync completed", le.nodeID)
 }
 
 // parseAddr 解析地址
