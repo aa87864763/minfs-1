@@ -65,7 +65,7 @@ config_*.yaml
 !config.yaml
 
 # Shell scripts
-*.sh
+
 
 # Log files
 *.log
