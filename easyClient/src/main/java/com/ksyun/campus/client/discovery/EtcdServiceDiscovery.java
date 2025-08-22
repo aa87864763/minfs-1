@@ -40,8 +40,8 @@ public class EtcdServiceDiscovery implements AutoCloseable {
     private final List<Watch.Watcher> watchers = new ArrayList<>();
 
     // 服务类型常量
-    public static final String META_SERVER_PREFIX = "/minfs/metaserver/";
-    public static final String DATA_SERVER_PREFIX = "/minfs/dataserver/";
+    public static final String META_SERVER_PREFIX = "/minfs/metaServer/";
+    public static final String DATA_SERVER_PREFIX = "/minfs/dataServer/";
 
     /**
      * 构造函数
@@ -75,10 +75,10 @@ public class EtcdServiceDiscovery implements AutoCloseable {
     private void refreshServices() {
         try {
             // 刷新 MetaServer 列表
-            refreshServiceList(META_SERVER_PREFIX, "metaserver");
+            refreshServiceList(META_SERVER_PREFIX, "metaServer");
 
             // 刷新 DataServer 列表
-            refreshServiceList(DATA_SERVER_PREFIX, "dataserver");
+            refreshServiceList(DATA_SERVER_PREFIX, "dataServer");
         } catch (Exception e) {
             logger.warning("刷新服务列表失败: " + e.getMessage());
         }
@@ -141,7 +141,7 @@ public class EtcdServiceDiscovery implements AutoCloseable {
                                         event.getKeyValue().getKey().toString(StandardCharsets.UTF_8));
                             }
                             // 刷新服务列表
-                            refreshServiceList(META_SERVER_PREFIX, "metaserver");
+                            refreshServiceList(META_SERVER_PREFIX, "metaServer");
                         }
 
                         @Override
@@ -174,7 +174,7 @@ public class EtcdServiceDiscovery implements AutoCloseable {
                                         event.getKeyValue().getKey().toString(StandardCharsets.UTF_8));
                             }
                             // 刷新服务列表
-                            refreshServiceList(DATA_SERVER_PREFIX, "dataserver");
+                            refreshServiceList(DATA_SERVER_PREFIX, "dataServer");
                         }
 
                         @Override
@@ -203,10 +203,10 @@ public class EtcdServiceDiscovery implements AutoCloseable {
      */
     private String extractServiceAddress(String key, String value, String serviceType) {
         try {
-            if ("metaserver".equals(serviceType)) {
+            if ("metaServer".equals(serviceType)) {
                 // MetaServer: 只处理 /nodes/ 路径下的注册信息，忽略 /election/ 路径
                 if (key.contains("/nodes/")) {
-                    // 解析JSON格式: {"node_id":"metaserver-9090","host":"localhost","port":9090,"addr":"localhost:9090",...}
+                    // 解析JSON格式: {"node_id":"metaServer-9090","host":"localhost","port":9090,"addr":"localhost:9090",...}
                     if (value.startsWith("{") && value.contains("\"addr\"")) {
                         // 简单提取addr字段值
                         int addrStart = value.indexOf("\"addr\":\"") + 8;
@@ -219,7 +219,7 @@ public class EtcdServiceDiscovery implements AutoCloseable {
                     }
                 }
                 return null; // 忽略election路径或无效格式
-            } else if ("dataserver".equals(serviceType)) {
+            } else if ("dataServer".equals(serviceType)) {
                 // DataServer: 值直接是地址
                 return value;
             }
@@ -234,7 +234,7 @@ public class EtcdServiceDiscovery implements AutoCloseable {
      * @return MetaServer 地址列表
      */
     public List<String> getMetaServers() {
-        return serviceCache.getOrDefault("metaserver", new ArrayList<>());
+        return serviceCache.getOrDefault("metaServer", new ArrayList<>());
     }
 
     /**
@@ -242,7 +242,7 @@ public class EtcdServiceDiscovery implements AutoCloseable {
      * @return DataServer 地址列表
      */
     public List<String> getDataServers() {
-        return serviceCache.getOrDefault("dataserver", new ArrayList<>());
+        return serviceCache.getOrDefault("dataServer", new ArrayList<>());
     }
 
     /**

@@ -1,0 +1,37 @@
+# DataServer Configuration
+server:
+  # Address for gRPC server to listen on
+  listen_address: "0.0.0.0:8001"
+  # Unique ID for this dataServer instance
+  dataServer_id: "dataServer-01"
+
+# Local storage configuration
+storage:
+  # Root directory for storing data blocks
+  data_root_path: "./data"
+  # Maximum storage capacity in bytes (0 = unlimited)
+  max_storage_size: 0
+  # Block size in bytes (4MB = 4194304)
+  block_size: 4194304
+
+# etcd cluster endpoints for service discovery
+etcd:
+  endpoints:
+    - "localhost:2379"
+  # Connection timeout in seconds
+  dial_timeout: 5
+  # Service registration TTL in seconds
+  lease_ttl: 5
+
+# MetaServer connection
+metaServer:
+  # Address removed - now uses etcd leader discovery
+  # Heartbeat interval in seconds - 减少到5秒
+  heartbeat_interval: 5
+  # Connection timeout in seconds
+  connection_timeout: 5
+
+# Logging configuration
+logging:
+  level: "info"
+  output: "stdout"

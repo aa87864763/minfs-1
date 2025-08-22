@@ -36,7 +36,7 @@ public class EtcdServiceRegistry implements AutoCloseable {
      * @param basePath 服务注册的基础路径
      * @param serviceId 服务ID
      * @param serviceAddress 服务地址（IP:Port）
-     * @param serviceType 服务类型（metaserver 或 dataserver）
+     * @param serviceType 服务类型（metaServer 或 dataServer）
      */
     public EtcdServiceRegistry(String etcdEndpoints, String basePath, String serviceId, 
                               String serviceAddress, String serviceType) {

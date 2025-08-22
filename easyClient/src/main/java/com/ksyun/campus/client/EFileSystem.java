@@ -170,7 +170,7 @@ public class EFileSystem extends FileSystem{
                                 ReplicaData replica = new ReplicaData();
                                 replica.id = blockId;
                                 replica.dsNode = location;
-                                // 生成 /dataserver-X/块ID 格式的路径
+                                // 生成 /dataServer-X/块ID 格式的路径
                                 String port = location.split(":")[1];
                                 int serverNum = Integer.parseInt(port) - 8000; // 8001->1, 8002->2, 8003->3, 8004->4
                                 replica.path = "/data" + serverNum + "/" + blockId;

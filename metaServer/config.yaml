@@ -1,0 +1,37 @@
+# MetaServer 配置文件
+
+# 服务配置
+server:
+  port: 8080
+  grpc_port: 9090
+
+# 数据库配置
+database:
+  badger_dir: "./metadb"
+
+# 集群配置
+cluster:
+  default_replication: 3      # 默认副本数
+  heartbeat_timeout: 10s      # 心跳超时时间 - 减少到10秒
+  permanent_down_threshold: 10s # 永久宕机判断阈值 - 减少到10秒
+
+# etcd 配置
+etcd:
+  endpoints: ["localhost:2379"]  # etcd 集群地址
+  timeout: 5s                    # 连接超时时间
+  dataServer_key_prefix: "/dfs/dataServers/"  # DataServer 注册key前缀
+  
+# 调度配置
+scheduler:
+  fsck_interval: 30s         # FSCK检查间隔 (扫描+恢复周期) 
+  gc_interval: 1m            # 垃圾回收检查间隔
+  block_size: 4194304        # 数据块大小 (4MB)
+  fsck_workers: 50           # FSCK检查工作协程数
+  repair_workers: 20         # 修复任务工作协程数
+  repair_queue_size: 5000    # 修复任务队列大小
+  max_concurrent_repairs: 100 # 最大并发修复任务数
+
+# 日志配置
+logging:
+  level: "info"
+  file: "./logs/metaServer.log"

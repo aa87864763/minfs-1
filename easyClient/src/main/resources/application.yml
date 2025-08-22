@@ -7,7 +7,7 @@ minfs:
     enabled: true
     endpoints: http://10.212.217.58:2379
     base-path: /minfs
-    meta-server-prefix: /minfs/metaserver/
+    meta-server-prefix: /minfs/metaServer/
     leader-key: /minfs/leader
 
   client:
