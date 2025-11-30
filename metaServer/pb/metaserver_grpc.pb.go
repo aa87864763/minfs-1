@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v3.12.4
-// source: metaServer.proto
+// source: metaserver.proto
 
 // 与 dataServer.proto 使用同一个包名，便于管理
 
@@ -10,7 +10,6 @@ package pb
 
 import (
 	context "context"
-
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -60,9 +59,11 @@ type MetaServerServiceClient interface {
 	GetReplicationInfo(ctx context.Context, in *GetReplicationInfoRequest, opts ...grpc.CallOption) (*GetReplicationInfoResponse, error)
 	// 接收来自 DataServer 的心跳和块报告
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
-	// 用于主从节点之间，实时同步元数据操作日志 (WAL)
+	// [已废弃 - Raft 模式下由 Raft 内部自动处理，调用会返回错误]
+	// 保留此接口仅为兼容旧版 easyClient，实际不再使用
 	SyncWAL(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[LogEntry, SimpleResponse], error)
-	// 节点重连后向leader申请WAL同步
+	// [已废弃 - Raft 模式下由 Raft 内部自动处理，调用会返回错误]
+	// 保留此接口仅为兼容旧版 easyClient，实际不再使用
 	RequestWALSync(ctx context.Context, in *RequestWALSyncRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[LogEntry], error)
 	// 获取主从信息 (HA 支持)
 	GetLeader(ctx context.Context, in *GetLeaderRequest, opts ...grpc.CallOption) (*GetLeaderResponse, error)
@@ -232,9 +233,11 @@ type MetaServerServiceServer interface {
 	GetReplicationInfo(context.Context, *GetReplicationInfoRequest) (*GetReplicationInfoResponse, error)
 	// 接收来自 DataServer 的心跳和块报告
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
-	// 用于主从节点之间，实时同步元数据操作日志 (WAL)
+	// [已废弃 - Raft 模式下由 Raft 内部自动处理，调用会返回错误]
+	// 保留此接口仅为兼容旧版 easyClient，实际不再使用
 	SyncWAL(grpc.ClientStreamingServer[LogEntry, SimpleResponse]) error
-	// 节点重连后向leader申请WAL同步
+	// [已废弃 - Raft 模式下由 Raft 内部自动处理，调用会返回错误]
+	// 保留此接口仅为兼容旧版 easyClient，实际不再使用
 	RequestWALSync(*RequestWALSyncRequest, grpc.ServerStreamingServer[LogEntry]) error
 	// 获取主从信息 (HA 支持)
 	GetLeader(context.Context, *GetLeaderRequest) (*GetLeaderResponse, error)
@@ -563,5 +566,5 @@ var MetaServerService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "metaServer.proto",
+	Metadata: "metaserver.proto",
 }

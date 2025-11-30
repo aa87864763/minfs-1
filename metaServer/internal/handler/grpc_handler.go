@@ -16,7 +16,6 @@ type MetaServerHandler struct {
 	metadataService  *service.MetadataService
 	clusterService   *service.ClusterService
 	schedulerService *service.SchedulerService
-	walService       *service.WALService
 }
 
 func NewMetaServerHandler(
@@ -28,18 +27,7 @@ func NewMetaServerHandler(
 		metadataService:  metadataService,
 		clusterService:   clusterService,
 		schedulerService: schedulerService,
-		walService:       nil, // 将在main.go中设置
 	}
-}
-
-// SetWALService 设置WAL服务
-func (h *MetaServerHandler) SetWALService(walService *service.WALService) {
-	h.walService = walService
-}
-
-// getWALService 获取WAL服务
-func (h *MetaServerHandler) getWALService() *service.WALService {
-	return h.walService
 }
 
 // isLeader 检查当前节点是否为leader
@@ -48,30 +36,6 @@ func (h *MetaServerHandler) isLeader() bool {
 		return false
 	}
 	return h.clusterService.IsLeader()
-}
-
-// createWALEntry 创建WAL条目
-func (h *MetaServerHandler) createWALEntry(operation pb.WALOperationType, data interface{}) (*pb.LogEntry, error) {
-	walService := h.getWALService()
-	if walService == nil {
-		// 如果没有WAL服务，跳过WAL记录
-		return nil, nil
-	}
-
-	return walService.AppendLogEntry(operation, data)
-}
-
-// syncWALToFollowers 同步WAL到followers
-func (h *MetaServerHandler) syncWALToFollowers(entry *pb.LogEntry) {
-	walService := h.getWALService()
-	if walService == nil {
-		return
-	}
-
-	err := walService.SyncToFollowers(entry)
-	if err != nil {
-		log.Printf("Failed to sync WAL entry %d to followers: %v", entry.LogIndex, err)
-	}
 }
 
 // CreateNode 创建文件或目录
@@ -92,34 +56,11 @@ func (h *MetaServerHandler) CreateNode(ctx context.Context, req *pb.CreateNodeRe
 		return &pb.SimpleResponse{Success: false}, fmt.Errorf("only leader can handle write operations")
 	}
 
-	// 1. 先执行实际的元数据操作，获得确定的inode ID
+	// 执行元数据操作（内部会通过 Raft 同步）
 	err := h.metadataService.CreateNode(path, req.Type)
 	if err != nil {
 		log.Printf("CreateNode error: %v", err)
 		return &pb.SimpleResponse{Success: false}, err
-	}
-
-	// 2. 获取创建后的文件信息（包含实际的inode ID）
-	nodeInfo, err := h.metadataService.GetNodeInfo(path)
-	if err != nil {
-		log.Printf("CreateNode: Failed to get node info: %v", err)
-		return &pb.SimpleResponse{Success: false}, err
-	}
-
-	// 3. 使用实际的inode ID创建WAL日志条目
-	walEntry, err := h.createWALEntry(pb.WALOperationType_CREATE_NODE, &pb.CreateNodeOperation{
-		Path:    path,
-		Type:    req.Type,
-		InodeId: nodeInfo.Inode, // 包含实际的inode ID
-	})
-	if err != nil {
-		log.Printf("CreateNode: Failed to create WAL entry: %v", err)
-		// 虽然WAL写入失败，但文件已创建，继续执行
-	}
-
-	// 3. 同步WAL到followers
-	if walEntry != nil {
-		go h.syncWALToFollowers(walEntry)
 	}
 
 	log.Printf("CreateNode success: %s", path)
@@ -191,29 +132,14 @@ func (h *MetaServerHandler) DeleteNode(ctx context.Context, req *pb.DeleteNodeRe
 		return &pb.SimpleResponse{Success: false}, fmt.Errorf("only leader can handle write operations")
 	}
 
-	// 1. 创建WAL日志条目
-	walEntry, err := h.createWALEntry(pb.WALOperationType_DELETE_NODE, &pb.DeleteNodeOperation{
-		Path:      req.Path,
-		Recursive: req.Recursive,
-	})
-	if err != nil {
-		log.Printf("DeleteNode: Failed to create WAL entry: %v", err)
-		return &pb.SimpleResponse{Success: false}, err
-	}
-
-	// 2. 执行实际的元数据操作
+	// DeleteNode 操作通过 Raft 自动同步
 	blocksToDelete, err := h.metadataService.DeleteNode(req.Path, req.Recursive)
 	if err != nil {
 		log.Printf("DeleteNode error: %v", err)
 		return &pb.SimpleResponse{Success: false}, err
 	}
 
-	// 3. 同步WAL到followers
-	if walEntry != nil {
-		go h.syncWALToFollowers(walEntry)
-	}
-
-	// 4. 调度块删除
+	// 调度块删除
 	for _, block := range blocksToDelete {
 		h.schedulerService.ScheduleBlockDeletion(block.BlockID, block.Locations)
 	}
@@ -246,31 +172,16 @@ func (h *MetaServerHandler) GetBlockLocations(ctx context.Context, req *pb.GetBl
 			}
 
 			// 1. 先执行实际的元数据操作，获得确定的inode ID
+			// CreateNode 操作通过 Raft 自动同步
 			err = h.metadataService.CreateNode(path, pb.FileType_File)
 			if err != nil {
 				return nil, err
 			}
 
-			// 2. 获取创建后的文件信息（包含实际的inode ID）
+			// 获取创建后的文件信息
 			nodeInfo, err = h.metadataService.GetNodeInfo(path)
 			if err != nil {
 				return nil, err
-			}
-
-			// 3. 使用实际的inode ID创建WAL日志条目
-			walEntry, err := h.createWALEntry(pb.WALOperationType_CREATE_NODE, &pb.CreateNodeOperation{
-				Path:    path,
-				Type:    pb.FileType_File,
-				InodeId: nodeInfo.Inode, // 包含实际的inode ID
-			})
-			if err != nil {
-				log.Printf("GetBlockLocations: Failed to create WAL entry: %v", err)
-				// 虽然WAL写入失败，但文件已创建，继续执行
-			}
-
-			// 4. 同步WAL到followers
-			if walEntry != nil {
-				go h.syncWALToFollowers(walEntry)
 			}
 		} else {
 			return nil, fmt.Errorf("file not found: %s", path)
@@ -338,42 +249,9 @@ func (h *MetaServerHandler) FinalizeWrite(ctx context.Context, req *pb.FinalizeW
 		return &pb.SimpleResponse{Success: false}, fmt.Errorf("not leader, cannot execute FinalizeWrite")
 	}
 
-	// 获取块映射信息用于WAL记录
-	blockMappings, err := h.metadataService.GetBlockMappings(req.Inode)
-	if err != nil {
-		log.Printf("FinalizeWrite error getting block mappings: %v", err)
-		return &pb.SimpleResponse{Success: false}, err
-	}
-
-	// 记录到WAL
-	walService := h.getWALService()
-	if walService != nil {
-		// 构建FinalizeWrite操作数据
-		finalizeWriteOp := pb.FinalizeWriteOperation{
-			Path:           req.Path,
-			Inode:          req.Inode,
-			Size:           req.Size,
-			Md5:            req.Md5,
-			BlockLocations: blockMappings,
-		}
-
-		// 添加WAL条目
-		entry, err := walService.AppendLogEntry(pb.WALOperationType_FINALIZE_WRITE, finalizeWriteOp)
-		if err != nil {
-			log.Printf("FinalizeWrite failed to append WAL entry: %v", err)
-			return &pb.SimpleResponse{Success: false}, err
-		}
-
-		// 同步到followers
-		err = walService.SyncToFollowers(entry)
-		if err != nil {
-			log.Printf("FinalizeWrite failed to sync to followers: %v", err)
-			// 注意：这里不返回错误，因为本地操作已成功，只是同步失败
-		}
-	}
-
-	// 执行本地FinalizeWrite操作
-	err = h.metadataService.FinalizeWrite(req.Path, req.Inode, uint64(req.Size), req.Md5)
+	// FinalizeWrite 操作现在通过 Raft 自动同步
+	// MetadataService.FinalizeWrite 内部会调用 RaftService.Apply
+	err := h.metadataService.FinalizeWrite(req.Path, req.Inode, uint64(req.Size), req.Md5)
 	if err != nil {
 		log.Printf("FinalizeWrite error: %v", err)
 		return &pb.SimpleResponse{Success: false}, err
@@ -435,17 +313,17 @@ func (h *MetaServerHandler) GetFileBlocks(ctx context.Context, req *pb.GetBlockL
 
 // Heartbeat 处理 DataServer 心跳
 func (h *MetaServerHandler) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
-	if req.DataserverId == "" {
+	if req.DataServerId == "" {
 		return nil, fmt.Errorf("dataServer_id cannot be empty")
 	}
 
-	if req.DataserverAddr == "" {
+	if req.DataServerAddr == "" {
 		return nil, fmt.Errorf("dataServer_addr cannot be empty")
 	}
 
 	response, err := h.clusterService.ProcessHeartbeat(req)
 	if err != nil {
-		log.Printf("Heartbeat error from %s: %v", req.DataserverId, err)
+		log.Printf("Heartbeat error from %s: %v", req.DataServerId, err)
 		return nil, err
 	}
 
@@ -609,120 +487,22 @@ func (h *MetaServerHandler) getAllFileNodes() ([]*pb.NodeInfo, error) {
 	return files, nil
 }
 
-// SyncWAL 同步 WAL（用于主从复制）
+
+// SyncWAL - [已废弃] 保留仅为兼容旧版 easyClient
+// Raft 模式下调用会返回错误
 func (h *MetaServerHandler) SyncWAL(stream pb.MetaServerService_SyncWALServer) error {
-	log.Printf("SyncWAL stream started")
-
-	var processedCount int
-
-	for {
-		entry, err := stream.Recv()
-		if err != nil {
-			if err.Error() == "EOF" {
-				log.Printf("SyncWAL stream ended, processed %d entries", processedCount)
-				return stream.SendAndClose(&pb.SimpleResponse{
-					Success: true,
-					Message: fmt.Sprintf("Processed %d WAL entries", processedCount),
-				})
-			}
-			log.Printf("SyncWAL stream error: %v", err)
-			return err
-		}
-
-		// 检查是否有WAL服务
-		walService := h.getWALService()
-		if walService == nil {
-			log.Printf("WAL service not available, skipping entry %d", entry.LogIndex)
-			continue
-		}
-
-		// 检查当前节点是否为leader
-		isLeader := h.isLeader()
-
-		if isLeader {
-			// 作为leader：回放WAL条目（执行操作）
-			err = walService.ReplayLogEntry(entry, h.metadataService)
-			if err != nil {
-				log.Printf("Failed to replay WAL entry %d: %v", entry.LogIndex, err)
-				return stream.SendAndClose(&pb.SimpleResponse{
-					Success: false,
-					Message: fmt.Sprintf("Failed to replay entry %d: %v", entry.LogIndex, err),
-				})
-			}
-			log.Printf("SyncWAL (Leader): Replayed entry %d, operation: %v", entry.LogIndex, entry.Operation)
-		} else {
-			// 作为follower：只存储WAL条目，不执行操作
-			log.Printf("SyncWAL (Follower): Storing entry %d without execution, operation: %v",
-				entry.LogIndex, entry.Operation)
-		}
-
-		// 将日志条目写入本地WAL存储
-		err = walService.WriteLogEntry(entry)
-		if err != nil {
-			log.Printf("Failed to write WAL entry %d locally: %v", entry.LogIndex, err)
-			return stream.SendAndClose(&pb.SimpleResponse{
-				Success: false,
-				Message: fmt.Sprintf("Failed to write entry %d locally: %v", entry.LogIndex, err),
-			})
-		}
-
-		// 更新下一个日志索引
-		walService.UpdateNextLogIndex(entry.LogIndex + 1)
-
-		processedCount++
-		log.Printf("SyncWAL: Processed entry %d, operation: %v, isLeader: %v",
-			entry.LogIndex, entry.Operation, isLeader)
-	}
+	log.Printf("[DEPRECATED] SyncWAL called - returning error (Raft mode)")
+	return stream.SendAndClose(&pb.SimpleResponse{
+		Success: false,
+		Message: "SyncWAL is deprecated in Raft mode. Raft handles log replication automatically.",
+	})
 }
 
-// RequestWALSync 处理节点重连后的WAL同步请求
+// RequestWALSync - [已废弃] 保留仅为兼容旧版 easyClient
+// Raft 模式下调用会返回错误
 func (h *MetaServerHandler) RequestWALSync(req *pb.RequestWALSyncRequest, stream pb.MetaServerService_RequestWALSyncServer) error {
-	log.Printf("RequestWALSync request from node %s, from index %d, reason: %s",
-		req.NodeId, req.LastLogIndex, req.Reason)
-
-	// 检查当前节点是否为leader
-	if !h.isLeader() {
-		return fmt.Errorf("only leader can handle WAL sync requests")
-	}
-
-	walService := h.getWALService()
-	if walService == nil {
-		return fmt.Errorf("WAL service not available")
-	}
-
-	// 获取从指定索引开始的所有WAL条目
-	startIndex := req.LastLogIndex + 1
-	if req.LastLogIndex == 0 {
-		startIndex = 1 // 从第一个日志开始
-	}
-
-	entries, err := walService.GetAllLogEntries(startIndex)
-	if err != nil {
-		log.Printf("Failed to get WAL entries from index %d: %v", startIndex, err)
-		return fmt.Errorf("failed to get WAL entries: %v", err)
-	}
-
-	log.Printf("Sending %d WAL entries to node %s starting from index %d",
-		len(entries), req.NodeId, startIndex)
-
-	// 发送WAL条目流
-	sentCount := 0
-	for _, entry := range entries {
-		err = stream.Send(entry)
-		if err != nil {
-			log.Printf("Failed to send WAL entry %d to node %s: %v", entry.LogIndex, req.NodeId, err)
-			return fmt.Errorf("failed to send WAL entry: %v", err)
-		}
-		sentCount++
-
-		// 每发送100个条目记录一次进度
-		if sentCount%100 == 0 {
-			log.Printf("Sent %d/%d WAL entries to node %s", sentCount, len(entries), req.NodeId)
-		}
-	}
-
-	log.Printf("WAL sync completed for node %s, sent %d entries", req.NodeId, sentCount)
-	return nil
+	log.Printf("[DEPRECATED] RequestWALSync called from node %s - returning error (Raft mode)", req.NodeId)
+	return fmt.Errorf("RequestWALSync is deprecated in Raft mode. Raft handles log replication automatically")
 }
 
 // GetLeader 获取主从信息 (HA 支持)

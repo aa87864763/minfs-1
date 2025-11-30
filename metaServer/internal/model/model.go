@@ -31,6 +31,18 @@ type Config struct {
 		DataServerKeyPrefix string        `yaml:"dataServer_key_prefix"`
 	} `yaml:"etcd"`
 
+	Raft struct {
+		Peers []struct {
+			ID       string `yaml:"id"`
+			RaftAddr string `yaml:"raft_addr"`
+			GrpcAddr string `yaml:"grpc_addr"`
+		} `yaml:"peers"`
+		HeartbeatTimeout   time.Duration `yaml:"heartbeat_timeout"`
+		ElectionTimeout    time.Duration `yaml:"election_timeout"`
+		SnapshotInterval   time.Duration `yaml:"snapshot_interval"`
+		SnapshotThreshold  uint64        `yaml:"snapshot_threshold"`
+	} `yaml:"raft"`
+
 	Scheduler struct {
 		FSCKInterval         time.Duration `yaml:"fsck_interval"`
 		GCInterval           time.Duration `yaml:"gc_interval"`

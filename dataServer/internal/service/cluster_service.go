@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"strings"
 	"time"
 
 	"dataServer/internal/model"
 	"dataServer/pb"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"go.etcd.io/etcd/client/v3/concurrency"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -437,70 +435,45 @@ func (s *EtcdClusterService) processReplicateCommand(blockID uint64, targets []s
 }
 
 // discoverLeader 从etcd发现当前Leader
+// 注意：MetaServer 已迁移到 Raft，不再使用 etcd election
+// 改为从 /minfs/metaServer/nodes/ 中查找 is_leader=true 的节点
 func discoverLeader(etcdClient *clientv3.Client) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// 创建一个临时的session来查询leader
-	session, err := concurrency.NewSession(etcdClient, concurrency.WithTTL(10))
+	// 查询所有 MetaServer 节点
+	resp, err := etcdClient.Get(ctx, "/minfs/metaServer/nodes/", clientv3.WithPrefix())
 	if err != nil {
-		return "", fmt.Errorf("failed to create session: %w", err)
-	}
-	defer session.Close()
-
-	// 创建election对象
-	election := concurrency.NewElection(session, "/minfs/metaServer/election")
-
-	// 查询当前leader
-	leaderResp, err := election.Leader(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to query leader from election: %w", err)
+		return "", fmt.Errorf("failed to get metaServer nodes: %w", err)
 	}
 
-	if len(leaderResp.Kvs) == 0 {
-		return "", fmt.Errorf("no leader found in election")
+	if len(resp.Kvs) == 0 {
+		return "", fmt.Errorf("no metaServer nodes found")
 	}
 
-	// 解析leader信息: "nodeID:nodeAddr"
-	leaderInfo := string(leaderResp.Kvs[0].Value)
-	log.Printf("Found leader info: %s", leaderInfo)
-
-	parts := strings.Split(leaderInfo, ":")
-	if len(parts) < 2 {
-		return "", fmt.Errorf("invalid leader info format: %s", leaderInfo)
+	// 查找 Leader 节点
+	type NodeInfo struct {
+		ID         string    `json:"id"`
+		Addr       string    `json:"addr"`
+		IsLeader   bool      `json:"is_leader"`
+		Role       string    `json:"role"`
+		RegisterAt time.Time `json:"register_at"`
 	}
 
-	nodeID := parts[0]
-	nodeAddr := strings.Join(parts[1:], ":")
-
-	log.Printf("Parsed leader - Node ID: %s, Address: %s", nodeID, nodeAddr)
-
-	// 验证节点信息存在
-	nodeResp, err := etcdClient.Get(ctx, fmt.Sprintf("/minfs/metaServer/nodes/%s", nodeID))
-	if err != nil {
-		log.Printf("Warning: failed to get leader node info: %v", err)
-		// 即使获取节点信息失败，也尝试直接使用地址
-		return nodeAddr, nil
-	}
-
-	if len(nodeResp.Kvs) > 0 {
-		// 解析节点详细信息以获取准确地址
-		nodeInfo := string(nodeResp.Kvs[0].Value)
-		log.Printf("Leader node info: %s", nodeInfo)
-
-		var node struct {
-			Addr string `json:"addr"`
+	for _, kv := range resp.Kvs {
+		var nodeInfo NodeInfo
+		if err := json.Unmarshal(kv.Value, &nodeInfo); err != nil {
+			log.Printf("Warning: failed to parse node info from %s: %v", string(kv.Key), err)
+			continue
 		}
 
-		if err := json.Unmarshal([]byte(nodeInfo), &node); err == nil && node.Addr != "" {
-			log.Printf("Using leader address from node info: %s", node.Addr)
-			return node.Addr, nil
+		if nodeInfo.IsLeader {
+			log.Printf("Found Raft leader - Node ID: %s, Address: %s", nodeInfo.ID, nodeInfo.Addr)
+			return nodeInfo.Addr, nil
 		}
 	}
 
-	// 使用从election中解析的地址
-	log.Printf("Using leader address from election: %s", nodeAddr)
-	return nodeAddr, nil
+	return "", fmt.Errorf("no leader found in metaServer cluster")
 }
 
 // reconnectToLeader 重连到新的Leader

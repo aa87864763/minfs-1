@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"metaServer/internal/model"
+	"metaServer/internal/raft"
 	"metaServer/pb"
 
 	"github.com/dgraph-io/badger/v3"
@@ -18,16 +19,16 @@ import (
 )
 
 type MetadataService struct {
-	db         *badger.DB
-	config     *model.Config
-	walService *WALService
+	db          *badger.DB
+	config      *model.Config
+	raftService *RaftService
 }
 
-func NewMetadataService(db *badger.DB, config *model.Config, walService *WALService) *MetadataService {
+func NewMetadataService(db *badger.DB, config *model.Config, raftService *RaftService) *MetadataService {
 	return &MetadataService{
-		db:         db,
-		config:     config,
-		walService: walService,
+		db:          db,
+		config:      config,
+		raftService: raftService,
 	}
 }
 
@@ -64,8 +65,56 @@ func (ms *MetadataService) CreateNode(path string, nodeType pb.FileType) error {
 	return ms.CreateNodeWithInode(path, nodeType, nil)
 }
 
-// CreateNodeWithInode 创建文件或目录节点，可以指定Inode ID（用于WAL回放）
+// CreateNodeWithInode 创建文件或目录节点，可以指定Inode ID（用于 Raft 回放）
 func (ms *MetadataService) CreateNodeWithInode(path string, nodeType pb.FileType, inodeID *uint64) error {
+	// 标准化路径
+	path = filepath.Clean(path)
+	if path == "." {
+		path = "/"
+	}
+
+	// 如果没有指定 inode，需要生成一个
+	var targetInodeID uint64
+	if inodeID == nil {
+		// 生成新的 inode ID
+		genID, err := ms.generateInodeID()
+		if err != nil {
+			return fmt.Errorf("failed to generate inode ID: %v", err)
+		}
+		targetInodeID = genID
+	} else {
+		targetInodeID = *inodeID
+	}
+
+	// 通过 Raft 提交创建操作
+	if ms.raftService != nil {
+		// 转换 FileType 为字符串
+		var nodeTypeStr string
+		if nodeType == pb.FileType_Directory {
+			nodeTypeStr = "DIRECTORY"
+		} else {
+			nodeTypeStr = "FILE"
+		}
+
+		operation := &raft.CreateNodeOperation{
+			Path:     path,
+			NodeType: nodeTypeStr,
+			InodeID:  targetInodeID,
+		}
+
+		err := ms.raftService.Apply(raft.OpCreateNode, operation)
+		if err != nil {
+			return fmt.Errorf("failed to apply CreateNode via Raft: %v", err)
+		}
+		return nil
+	}
+
+	// 如果没有 Raft（如初始化阶段），直接写数据库
+	return ms.createNodeInDB(path, nodeType, targetInodeID)
+}
+
+// createNodeInDB 在数据库中创建节点（不通过 Raft）
+func (ms *MetadataService) createNodeInDB(path string, nodeType pb.FileType, targetInodeID uint64) error {
 	// 转换 FileType 为内部使用的 NodeType
 	var internalType pb.FileType
 	switch nodeType {
@@ -75,11 +124,6 @@ func (ms *MetadataService) CreateNodeWithInode(path string, nodeType pb.FileType
 		internalType = pb.FileType_File
 	default:
 		internalType = pb.FileType_File
-	}
-	// 标准化路径
-	path = filepath.Clean(path)
-	if path == "." {
-		path = "/"
 	}
 
 	return ms.db.Update(func(txn *badger.Txn) error {
@@ -106,34 +150,23 @@ func (ms *MetadataService) CreateNodeWithInode(path string, nodeType pb.FileType
 			}
 		}
 
-		// 生成新的 Inode ID 或使用指定的 Inode ID
-		var nodeInodeID uint64
-		if inodeID != nil {
-			// 使用指定的 Inode ID（WAL回放模式）
-			nodeInodeID = *inodeID
+		// 使用传入的 Inode ID
+		nodeInodeID := targetInodeID
 
-			// 验证指定的 Inode ID 是否已被使用
-			inodeKey := fmt.Sprintf("%s%d", model.PrefixInode, nodeInodeID)
-			_, err := txn.Get([]byte(inodeKey))
-			if err == nil {
-				return fmt.Errorf("inode ID %d already exists", nodeInodeID)
-			}
-			if err != badger.ErrKeyNotFound {
-				return err
-			}
+		// 验证 Inode ID 是否已被使用
+		inodeKey := fmt.Sprintf("%s%d", model.PrefixInode, nodeInodeID)
+		_, err = txn.Get([]byte(inodeKey))
+		if err == nil {
+			return fmt.Errorf("inode ID %d already exists", nodeInodeID)
+		}
+		if err != badger.ErrKeyNotFound {
+			return err
+		}
 
-			// 如果指定的 Inode ID 比当前计数器大，需要更新计数器
-			err = ms.updateInodeCounterIfNeededInTx(txn, nodeInodeID)
-			if err != nil {
-				return err
-			}
-		} else {
-			// 正常模式：生成新的 Inode ID
-			var generateErr error
-			nodeInodeID, generateErr = ms.generateInodeIDInTx(txn)
-			if generateErr != nil {
-				return generateErr
-			}
+		// 更新 inode 计数器
+		err = ms.updateInodeCounterIfNeededInTx(txn, nodeInodeID)
+		if err != nil {
+			return err
 		}
 
 		// 创建 NodeInfo
@@ -152,15 +185,15 @@ func (ms *MetadataService) CreateNodeWithInode(path string, nodeType pb.FileType
 			return err
 		}
 
-		inodeKey := fmt.Sprintf("%s%d", model.PrefixInode, nodeInodeID)
-		if err := txn.Set([]byte(inodeKey), data); err != nil {
+		inodeKeyFinal := fmt.Sprintf("%s%d", model.PrefixInode, nodeInodeID)
+		if err = txn.Set([]byte(inodeKeyFinal), data); err != nil {
 			return err
 		}
 
 		// 存储路径映射
 		inodeBuf := make([]byte, 8)
 		binary.BigEndian.PutUint64(inodeBuf, nodeInodeID)
-		if err := txn.Set([]byte(pathKey), inodeBuf); err != nil {
+		if err = txn.Set([]byte(pathKey), inodeBuf); err != nil {
 			return err
 		}
 
@@ -177,7 +210,7 @@ func (ms *MetadataService) CreateNodeWithInode(path string, nodeType pb.FileType
 
 			// 添加目录条目
 			dirKey := fmt.Sprintf("%s%d/%s", model.PrefixDir, parentInodeID, fileName)
-			if err := txn.Set([]byte(dirKey), inodeBuf); err != nil {
+			if err = txn.Set([]byte(dirKey), inodeBuf); err != nil {
 				return err
 			}
 		}
@@ -633,31 +666,27 @@ func (ms *MetadataService) deleteKeysWithPrefixInTx(txn *badger.Txn, prefix stri
 	return nil
 }
 
-// SetBlockMapping 设置文件块映射（带WAL日志）
+// SetBlockMapping 设置文件块映射（通过 Raft 共识）
 func (ms *MetadataService) SetBlockMapping(inodeID uint64, blockIndex uint64, blockLocs *pb.BlockLocations) error {
-	// 1. 先写WAL日志
-	if ms.walService != nil {
+	// 通过 Raft 提交操作（会自动同步到所有节点）
+	if ms.raftService != nil {
 		// 构建操作数据
-		operation := &pb.SetBlockMappingOperation{
-			InodeId:    inodeID,
+		operation := &raft.SetBlockMappingOperation{
+			InodeID:    inodeID,
 			BlockIndex: blockIndex,
-			BlockLocs:  blockLocs,
+			BlockID:    blockLocs.BlockId,
+			Locations:  blockLocs.Locations,
 		}
 
-		// 写入日志
-		entry, err := ms.walService.AppendLogEntry(pb.WALOperationType_SET_BLOCK_MAPPING, operation)
+		// 提交到 Raft（Leader 会自动复制到 Followers）
+		err := ms.raftService.Apply(raft.OpSetBlockMapping, operation)
 		if err != nil {
-			return fmt.Errorf("failed to write WAL for SetBlockMapping: %v", err)
+			return fmt.Errorf("failed to apply SetBlockMapping via Raft: %v", err)
 		}
-
-		// 如果是Leader，需要将此日志同步给Followers
-		if entry != nil && ms.walService.IsLeader() {
-			// 异步同步，不阻塞主流程
-			go ms.walService.SyncToFollowers(entry)
-		}
+		return nil
 	}
 
-	// 2. 再执行数据库更新
+	// 如果没有 Raft（如初始化阶段），直接写数据库
 	return ms.setBlockMappingInDB(inodeID, blockIndex, blockLocs)
 }
 
@@ -909,26 +938,21 @@ func (ms *MetadataService) TraverseAllFiles(callback func(*pb.NodeInfo) error) e
 
 // UpdateBlockLocation 更新块位置信息，将旧地址替换为新地址
 func (ms *MetadataService) UpdateBlockLocation(blockID uint64, oldAddr, newAddr string) error {
-	// 1. 先写WAL日志（如果WAL服务可用）
-	if ms.walService != nil {
-		operation := &pb.UpdateBlockLocationOperation{
-			BlockId: blockID,
+	// 通过 Raft 提交操作
+	if ms.raftService != nil {
+		operation := &raft.UpdateBlockLocationOperation{
+			BlockID: blockID,
 			OldAddr: oldAddr,
 			NewAddr: newAddr,
 		}
-		entry, err := ms.walService.AppendLogEntry(pb.WALOperationType_UPDATE_BLOCK_LOCATION, operation)
+		err := ms.raftService.Apply(raft.OpUpdateBlockLocation, operation)
 		if err != nil {
-			return fmt.Errorf("failed to write WAL entry for block location update: %v", err)
+			return fmt.Errorf("failed to apply UpdateBlockLocation via Raft: %v", err)
 		}
-
-		// 如果是Leader，需要将此日志异步同步给Followers
-		if entry != nil && ms.walService.IsLeader() {
-			// 异步同步，不阻塞主流程
-			go ms.walService.SyncToFollowers(entry)
-		}
+		return nil
 	}
 
-	// 2. 执行实际的数据库更新
+	// 如果没有 Raft，直接写数据库
 	return ms.updateBlockLocationInDB(blockID, oldAddr, newAddr)
 }
 

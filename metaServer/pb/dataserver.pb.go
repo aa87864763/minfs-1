@@ -2,17 +2,16 @@
 // versions:
 // 	protoc-gen-go v1.36.6
 // 	protoc        v3.12.4
-// source: dataServer.proto
+// source: dataserver.proto
 
 package pb
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -35,7 +34,7 @@ type WriteBlockRequest struct {
 
 func (x *WriteBlockRequest) Reset() {
 	*x = WriteBlockRequest{}
-	mi := &file_dataServer_proto_msgTypes[0]
+	mi := &file_dataserver_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47,7 +46,7 @@ func (x *WriteBlockRequest) String() string {
 func (*WriteBlockRequest) ProtoMessage() {}
 
 func (x *WriteBlockRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dataServer_proto_msgTypes[0]
+	mi := &file_dataserver_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -60,7 +59,7 @@ func (x *WriteBlockRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteBlockRequest.ProtoReflect.Descriptor instead.
 func (*WriteBlockRequest) Descriptor() ([]byte, []int) {
-	return file_dataServer_proto_rawDescGZIP(), []int{0}
+	return file_dataserver_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *WriteBlockRequest) GetContent() isWriteBlockRequest_Content {
@@ -114,7 +113,7 @@ type WriteBlockMetadata struct {
 
 func (x *WriteBlockMetadata) Reset() {
 	*x = WriteBlockMetadata{}
-	mi := &file_dataServer_proto_msgTypes[1]
+	mi := &file_dataserver_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -126,7 +125,7 @@ func (x *WriteBlockMetadata) String() string {
 func (*WriteBlockMetadata) ProtoMessage() {}
 
 func (x *WriteBlockMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_dataServer_proto_msgTypes[1]
+	mi := &file_dataserver_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -139,7 +138,7 @@ func (x *WriteBlockMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteBlockMetadata.ProtoReflect.Descriptor instead.
 func (*WriteBlockMetadata) Descriptor() ([]byte, []int) {
-	return file_dataServer_proto_rawDescGZIP(), []int{1}
+	return file_dataserver_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *WriteBlockMetadata) GetBlockId() uint64 {
@@ -165,7 +164,7 @@ type WriteBlockResponse struct {
 
 func (x *WriteBlockResponse) Reset() {
 	*x = WriteBlockResponse{}
-	mi := &file_dataServer_proto_msgTypes[2]
+	mi := &file_dataserver_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -177,7 +176,7 @@ func (x *WriteBlockResponse) String() string {
 func (*WriteBlockResponse) ProtoMessage() {}
 
 func (x *WriteBlockResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dataServer_proto_msgTypes[2]
+	mi := &file_dataserver_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -190,7 +189,7 @@ func (x *WriteBlockResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteBlockResponse.ProtoReflect.Descriptor instead.
 func (*WriteBlockResponse) Descriptor() ([]byte, []int) {
-	return file_dataServer_proto_rawDescGZIP(), []int{2}
+	return file_dataserver_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *WriteBlockResponse) GetSuccess() bool {
@@ -209,7 +208,7 @@ type ReadBlockRequest struct {
 
 func (x *ReadBlockRequest) Reset() {
 	*x = ReadBlockRequest{}
-	mi := &file_dataServer_proto_msgTypes[3]
+	mi := &file_dataserver_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -221,7 +220,7 @@ func (x *ReadBlockRequest) String() string {
 func (*ReadBlockRequest) ProtoMessage() {}
 
 func (x *ReadBlockRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dataServer_proto_msgTypes[3]
+	mi := &file_dataserver_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -234,7 +233,7 @@ func (x *ReadBlockRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadBlockRequest.ProtoReflect.Descriptor instead.
 func (*ReadBlockRequest) Descriptor() ([]byte, []int) {
-	return file_dataServer_proto_rawDescGZIP(), []int{3}
+	return file_dataserver_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ReadBlockRequest) GetBlockId() uint64 {
@@ -253,7 +252,7 @@ type ReadBlockResponse struct {
 
 func (x *ReadBlockResponse) Reset() {
 	*x = ReadBlockResponse{}
-	mi := &file_dataServer_proto_msgTypes[4]
+	mi := &file_dataserver_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -265,7 +264,7 @@ func (x *ReadBlockResponse) String() string {
 func (*ReadBlockResponse) ProtoMessage() {}
 
 func (x *ReadBlockResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dataServer_proto_msgTypes[4]
+	mi := &file_dataserver_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -278,7 +277,7 @@ func (x *ReadBlockResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadBlockResponse.ProtoReflect.Descriptor instead.
 func (*ReadBlockResponse) Descriptor() ([]byte, []int) {
-	return file_dataServer_proto_rawDescGZIP(), []int{4}
+	return file_dataserver_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ReadBlockResponse) GetChunkData() []byte {
@@ -297,7 +296,7 @@ type DeleteBlockRequest struct {
 
 func (x *DeleteBlockRequest) Reset() {
 	*x = DeleteBlockRequest{}
-	mi := &file_dataServer_proto_msgTypes[5]
+	mi := &file_dataserver_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -309,7 +308,7 @@ func (x *DeleteBlockRequest) String() string {
 func (*DeleteBlockRequest) ProtoMessage() {}
 
 func (x *DeleteBlockRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dataServer_proto_msgTypes[5]
+	mi := &file_dataserver_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -322,7 +321,7 @@ func (x *DeleteBlockRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteBlockRequest.ProtoReflect.Descriptor instead.
 func (*DeleteBlockRequest) Descriptor() ([]byte, []int) {
-	return file_dataServer_proto_rawDescGZIP(), []int{5}
+	return file_dataserver_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DeleteBlockRequest) GetBlockId() uint64 {
@@ -341,7 +340,7 @@ type DeleteBlockResponse struct {
 
 func (x *DeleteBlockResponse) Reset() {
 	*x = DeleteBlockResponse{}
-	mi := &file_dataServer_proto_msgTypes[6]
+	mi := &file_dataserver_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -353,7 +352,7 @@ func (x *DeleteBlockResponse) String() string {
 func (*DeleteBlockResponse) ProtoMessage() {}
 
 func (x *DeleteBlockResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dataServer_proto_msgTypes[6]
+	mi := &file_dataserver_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -366,7 +365,7 @@ func (x *DeleteBlockResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteBlockResponse.ProtoReflect.Descriptor instead.
 func (*DeleteBlockResponse) Descriptor() ([]byte, []int) {
-	return file_dataServer_proto_rawDescGZIP(), []int{6}
+	return file_dataserver_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DeleteBlockResponse) GetSuccess() bool {
@@ -386,7 +385,7 @@ type CopyBlockRequest struct {
 
 func (x *CopyBlockRequest) Reset() {
 	*x = CopyBlockRequest{}
-	mi := &file_dataServer_proto_msgTypes[7]
+	mi := &file_dataserver_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -398,7 +397,7 @@ func (x *CopyBlockRequest) String() string {
 func (*CopyBlockRequest) ProtoMessage() {}
 
 func (x *CopyBlockRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dataServer_proto_msgTypes[7]
+	mi := &file_dataserver_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -411,7 +410,7 @@ func (x *CopyBlockRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CopyBlockRequest.ProtoReflect.Descriptor instead.
 func (*CopyBlockRequest) Descriptor() ([]byte, []int) {
-	return file_dataServer_proto_rawDescGZIP(), []int{7}
+	return file_dataserver_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CopyBlockRequest) GetBlockId() uint64 {
@@ -437,7 +436,7 @@ type CopyBlockResponse struct {
 
 func (x *CopyBlockResponse) Reset() {
 	*x = CopyBlockResponse{}
-	mi := &file_dataServer_proto_msgTypes[8]
+	mi := &file_dataserver_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -449,7 +448,7 @@ func (x *CopyBlockResponse) String() string {
 func (*CopyBlockResponse) ProtoMessage() {}
 
 func (x *CopyBlockResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dataServer_proto_msgTypes[8]
+	mi := &file_dataserver_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -462,7 +461,7 @@ func (x *CopyBlockResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CopyBlockResponse.ProtoReflect.Descriptor instead.
 func (*CopyBlockResponse) Descriptor() ([]byte, []int) {
-	return file_dataServer_proto_rawDescGZIP(), []int{8}
+	return file_dataserver_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CopyBlockResponse) GetSuccess() bool {
@@ -472,11 +471,11 @@ func (x *CopyBlockResponse) GetSuccess() bool {
 	return false
 }
 
-var File_dataServer_proto protoreflect.FileDescriptor
+var File_dataserver_proto protoreflect.FileDescriptor
 
-const file_dataServer_proto_rawDesc = "" +
+const file_dataserver_proto_rawDesc = "" +
 	"\n" +
-	"\x10dataServer.proto\x12\vdfs_project\"~\n" +
+	"\x10dataserver.proto\x12\vdfs_project\"~\n" +
 	"\x11WriteBlockRequest\x12=\n" +
 	"\bmetadata\x18\x01 \x01(\v2\x1f.dfs_project.WriteBlockMetadataH\x00R\bmetadata\x12\x1f\n" +
 	"\n" +
@@ -509,19 +508,19 @@ const file_dataServer_proto_rawDesc = "" +
 	"\tCopyBlock\x12\x1d.dfs_project.CopyBlockRequest\x1a\x1e.dfs_project.CopyBlockResponseB\x06Z\x04./pbb\x06proto3"
 
 var (
-	file_dataServer_proto_rawDescOnce sync.Once
-	file_dataServer_proto_rawDescData []byte
+	file_dataserver_proto_rawDescOnce sync.Once
+	file_dataserver_proto_rawDescData []byte
 )
 
-func file_dataServer_proto_rawDescGZIP() []byte {
-	file_dataServer_proto_rawDescOnce.Do(func() {
-		file_dataServer_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_dataServer_proto_rawDesc), len(file_dataServer_proto_rawDesc)))
+func file_dataserver_proto_rawDescGZIP() []byte {
+	file_dataserver_proto_rawDescOnce.Do(func() {
+		file_dataserver_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_dataserver_proto_rawDesc), len(file_dataserver_proto_rawDesc)))
 	})
-	return file_dataServer_proto_rawDescData
+	return file_dataserver_proto_rawDescData
 }
 
-var file_dataServer_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
-var file_dataServer_proto_goTypes = []any{
+var file_dataserver_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_dataserver_proto_goTypes = []any{
 	(*WriteBlockRequest)(nil),   // 0: dfs_project.WriteBlockRequest
 	(*WriteBlockMetadata)(nil),  // 1: dfs_project.WriteBlockMetadata
 	(*WriteBlockResponse)(nil),  // 2: dfs_project.WriteBlockResponse
@@ -532,7 +531,7 @@ var file_dataServer_proto_goTypes = []any{
 	(*CopyBlockRequest)(nil),    // 7: dfs_project.CopyBlockRequest
 	(*CopyBlockResponse)(nil),   // 8: dfs_project.CopyBlockResponse
 }
-var file_dataServer_proto_depIdxs = []int32{
+var file_dataserver_proto_depIdxs = []int32{
 	1, // 0: dfs_project.WriteBlockRequest.metadata:type_name -> dfs_project.WriteBlockMetadata
 	0, // 1: dfs_project.DataServerService.WriteBlock:input_type -> dfs_project.WriteBlockRequest
 	3, // 2: dfs_project.DataServerService.ReadBlock:input_type -> dfs_project.ReadBlockRequest
@@ -549,12 +548,12 @@ var file_dataServer_proto_depIdxs = []int32{
 	0, // [0:1] is the sub-list for field type_name
 }
 
-func init() { file_dataServer_proto_init() }
-func file_dataServer_proto_init() {
-	if File_dataServer_proto != nil {
+func init() { file_dataserver_proto_init() }
+func file_dataserver_proto_init() {
+	if File_dataserver_proto != nil {
 		return
 	}
-	file_dataServer_proto_msgTypes[0].OneofWrappers = []any{
+	file_dataserver_proto_msgTypes[0].OneofWrappers = []any{
 		(*WriteBlockRequest_Metadata)(nil),
 		(*WriteBlockRequest_ChunkData)(nil),
 	}
@@ -562,17 +561,17 @@ func file_dataServer_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dataServer_proto_rawDesc), len(file_dataServer_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dataserver_proto_rawDesc), len(file_dataserver_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_dataServer_proto_goTypes,
-		DependencyIndexes: file_dataServer_proto_depIdxs,
-		MessageInfos:      file_dataServer_proto_msgTypes,
+		GoTypes:           file_dataserver_proto_goTypes,
+		DependencyIndexes: file_dataserver_proto_depIdxs,
+		MessageInfos:      file_dataserver_proto_msgTypes,
 	}.Build()
-	File_dataServer_proto = out.File
-	file_dataServer_proto_goTypes = nil
-	file_dataServer_proto_depIdxs = nil
+	File_dataserver_proto = out.File
+	file_dataserver_proto_goTypes = nil
+	file_dataserver_proto_depIdxs = nil
 }

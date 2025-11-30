@@ -131,13 +131,15 @@ func (es *EtcdService) extractDataServerID(key string) string {
 	return ""
 }
 
-// RegisterMetaServer 将 MetaServer 注册到 etcd（用于高可用模式）
-func (es *EtcdService) RegisterMetaServer(metaServerID, addr string) error {
+// RegisterMetaServer 将 MetaServer 注册到 etcd（用于服务发现）
+// 使用 TTL + KeepAlive 机制，节点下线时自动移除
+func (es *EtcdService) RegisterMetaServer(metaServerID, addr string, isLeader bool) error {
 	registration := map[string]interface{}{
 		"id":          metaServerID,
 		"addr":        addr,
-		"register_at": time.Now(),
+		"register_at": time.Now().Format(time.RFC3339),
 		"role":        "metaServer",
+		"is_leader":   isLeader,
 	}
 
 	data, err := json.Marshal(registration)
@@ -145,17 +147,82 @@ func (es *EtcdService) RegisterMetaServer(metaServerID, addr string) error {
 		return fmt.Errorf("failed to marshal MetaServer registration: %v", err)
 	}
 
-	key := fmt.Sprintf("/minfs/metaServers/%s", metaServerID)
+	key := fmt.Sprintf("/minfs/metaServer/nodes/%s", metaServerID)
 	
-	ctx, cancel := context.WithTimeout(context.Background(), es.config.Etcd.Timeout)
-	defer cancel()
+	// 创建 60s TTL 的 lease
+	lease, err := es.client.Grant(context.Background(), 60)
+	if err != nil {
+		return fmt.Errorf("failed to create lease: %v", err)
+	}
 
-	_, err = es.client.Put(ctx, key, string(data))
+	// 注册节点信息
+	ctx, cancel := context.WithTimeout(context.Background(), es.config.Etcd.Timeout)
+	_, err = es.client.Put(ctx, key, string(data), clientv3.WithLease(lease.ID))
+	cancel()
 	if err != nil {
 		return fmt.Errorf("failed to register MetaServer: %v", err)
 	}
 
-	log.Printf("MetaServer registered in etcd: %s at %s", metaServerID, addr)
+	// 启动自动续租
+	keepaliveChan, err := es.client.KeepAlive(context.Background(), lease.ID)
+	if err != nil {
+		return fmt.Errorf("failed to start keepalive: %v", err)
+	}
+
+	// 处理续租响应（防止 channel 阻塞）
+	go func() {
+		for range keepaliveChan {
+			// 续租成功，无需处理
+		}
+	}()
+
+	log.Printf("MetaServer registered in etcd: %s at %s (leader=%v)", metaServerID, addr, isLeader)
+	return nil
+}
+
+// UpdateMetaServerLeaderStatus 更新 MetaServer 的 Leader 状态
+func (es *EtcdService) UpdateMetaServerLeaderStatus(metaServerID, addr string, isLeader bool) error {
+	registration := map[string]interface{}{
+		"id":          metaServerID,
+		"addr":        addr,
+		"register_at": time.Now().Format(time.RFC3339),
+		"role":        "metaServer",
+		"is_leader":   isLeader,
+	}
+
+	data, err := json.Marshal(registration)
+	if err != nil {
+		return fmt.Errorf("failed to marshal MetaServer registration: %v", err)
+	}
+
+	key := fmt.Sprintf("/minfs/metaServer/nodes/%s", metaServerID)
+	
+	ctx, cancel := context.WithTimeout(context.Background(), es.config.Etcd.Timeout)
+	defer cancel()
+
+	// 更新节点信息（保持原有的 lease）
+	_, err = es.client.Put(ctx, key, string(data), clientv3.WithIgnoreLease())
+	if err != nil {
+		return fmt.Errorf("failed to update MetaServer status: %v", err)
+	}
+
+	log.Printf("MetaServer status updated: %s (leader=%v)", metaServerID, isLeader)
+	return nil
+}
+
+// UnregisterMetaServer 从 etcd 注销 MetaServer
+func (es *EtcdService) UnregisterMetaServer(metaServerID string) error {
+	key := fmt.Sprintf("/minfs/metaServer/nodes/%s", metaServerID)
+	
+	ctx, cancel := context.WithTimeout(context.Background(), es.config.Etcd.Timeout)
+	defer cancel()
+
+	_, err := es.client.Delete(ctx, key)
+	if err != nil {
+		return fmt.Errorf("failed to unregister MetaServer: %v", err)
+	}
+
+	log.Printf("MetaServer unregistered from etcd: %s", metaServerID)
 	return nil
 }
 

@@ -2,19 +2,18 @@
 // versions:
 // 	protoc-gen-go v1.36.6
 // 	protoc        v3.12.4
-// source: metaServer.proto
+// source: metaserver.proto
 
 // 与 dataServer.proto 使用同一个包名，便于管理
 
 package pb
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -61,11 +60,11 @@ func (x FileType) String() string {
 }
 
 func (FileType) Descriptor() protoreflect.EnumDescriptor {
-	return file_metaServer_proto_enumTypes[0].Descriptor()
+	return file_metaserver_proto_enumTypes[0].Descriptor()
 }
 
 func (FileType) Type() protoreflect.EnumType {
-	return &file_metaServer_proto_enumTypes[0]
+	return &file_metaserver_proto_enumTypes[0]
 }
 
 func (x FileType) Number() protoreflect.EnumNumber {
@@ -74,10 +73,10 @@ func (x FileType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use FileType.Descriptor instead.
 func (FileType) EnumDescriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{0}
+	return file_metaserver_proto_rawDescGZIP(), []int{0}
 }
 
-// WAL操作类型枚举
+// WAL操作类型枚举 [已废弃]
 type WALOperationType int32
 
 const (
@@ -120,11 +119,11 @@ func (x WALOperationType) String() string {
 }
 
 func (WALOperationType) Descriptor() protoreflect.EnumDescriptor {
-	return file_metaServer_proto_enumTypes[1].Descriptor()
+	return file_metaserver_proto_enumTypes[1].Descriptor()
 }
 
 func (WALOperationType) Type() protoreflect.EnumType {
-	return &file_metaServer_proto_enumTypes[1]
+	return &file_metaserver_proto_enumTypes[1]
 }
 
 func (x WALOperationType) Number() protoreflect.EnumNumber {
@@ -133,7 +132,7 @@ func (x WALOperationType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WALOperationType.Descriptor instead.
 func (WALOperationType) EnumDescriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{1}
+	return file_metaserver_proto_rawDescGZIP(), []int{1}
 }
 
 type Command_Action int32
@@ -166,11 +165,11 @@ func (x Command_Action) String() string {
 }
 
 func (Command_Action) Descriptor() protoreflect.EnumDescriptor {
-	return file_metaServer_proto_enumTypes[2].Descriptor()
+	return file_metaserver_proto_enumTypes[2].Descriptor()
 }
 
 func (Command_Action) Type() protoreflect.EnumType {
-	return &file_metaServer_proto_enumTypes[2]
+	return &file_metaserver_proto_enumTypes[2]
 }
 
 func (x Command_Action) Number() protoreflect.EnumNumber {
@@ -179,7 +178,7 @@ func (x Command_Action) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Command_Action.Descriptor instead.
 func (Command_Action) EnumDescriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{20, 0}
+	return file_metaserver_proto_rawDescGZIP(), []int{20, 0}
 }
 
 // 副本数据结构 (匹配 easyClient ReplicaData)
@@ -194,7 +193,7 @@ type ReplicaData struct {
 
 func (x *ReplicaData) Reset() {
 	*x = ReplicaData{}
-	mi := &file_metaServer_proto_msgTypes[0]
+	mi := &file_metaserver_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -206,7 +205,7 @@ func (x *ReplicaData) String() string {
 func (*ReplicaData) ProtoMessage() {}
 
 func (x *ReplicaData) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[0]
+	mi := &file_metaserver_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -219,7 +218,7 @@ func (x *ReplicaData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicaData.ProtoReflect.Descriptor instead.
 func (*ReplicaData) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{0}
+	return file_metaserver_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *ReplicaData) GetId() string {
@@ -258,7 +257,7 @@ type StatInfo struct {
 
 func (x *StatInfo) Reset() {
 	*x = StatInfo{}
-	mi := &file_metaServer_proto_msgTypes[1]
+	mi := &file_metaserver_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -270,7 +269,7 @@ func (x *StatInfo) String() string {
 func (*StatInfo) ProtoMessage() {}
 
 func (x *StatInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[1]
+	mi := &file_metaserver_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -283,7 +282,7 @@ func (x *StatInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatInfo.ProtoReflect.Descriptor instead.
 func (*StatInfo) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{1}
+	return file_metaserver_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *StatInfo) GetPath() string {
@@ -339,7 +338,7 @@ type MetaServerMsg struct {
 
 func (x *MetaServerMsg) Reset() {
 	*x = MetaServerMsg{}
-	mi := &file_metaServer_proto_msgTypes[2]
+	mi := &file_metaserver_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -351,7 +350,7 @@ func (x *MetaServerMsg) String() string {
 func (*MetaServerMsg) ProtoMessage() {}
 
 func (x *MetaServerMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[2]
+	mi := &file_metaserver_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -364,7 +363,7 @@ func (x *MetaServerMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetaServerMsg.ProtoReflect.Descriptor instead.
 func (*MetaServerMsg) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{2}
+	return file_metaserver_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *MetaServerMsg) GetHost() string {
@@ -395,7 +394,7 @@ type DataServerMsg struct {
 
 func (x *DataServerMsg) Reset() {
 	*x = DataServerMsg{}
-	mi := &file_metaServer_proto_msgTypes[3]
+	mi := &file_metaserver_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -407,7 +406,7 @@ func (x *DataServerMsg) String() string {
 func (*DataServerMsg) ProtoMessage() {}
 
 func (x *DataServerMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[3]
+	mi := &file_metaserver_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -420,7 +419,7 @@ func (x *DataServerMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataServerMsg.ProtoReflect.Descriptor instead.
 func (*DataServerMsg) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{3}
+	return file_metaserver_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *DataServerMsg) GetHost() string {
@@ -470,7 +469,7 @@ type ClusterInfo struct {
 
 func (x *ClusterInfo) Reset() {
 	*x = ClusterInfo{}
-	mi := &file_metaServer_proto_msgTypes[4]
+	mi := &file_metaserver_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -482,7 +481,7 @@ func (x *ClusterInfo) String() string {
 func (*ClusterInfo) ProtoMessage() {}
 
 func (x *ClusterInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[4]
+	mi := &file_metaserver_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -495,7 +494,7 @@ func (x *ClusterInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterInfo.ProtoReflect.Descriptor instead.
 func (*ClusterInfo) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{4}
+	return file_metaserver_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ClusterInfo) GetMasterMetaServer() *MetaServerMsg {
@@ -536,7 +535,7 @@ type NodeInfo struct {
 
 func (x *NodeInfo) Reset() {
 	*x = NodeInfo{}
-	mi := &file_metaServer_proto_msgTypes[5]
+	mi := &file_metaserver_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -548,7 +547,7 @@ func (x *NodeInfo) String() string {
 func (*NodeInfo) ProtoMessage() {}
 
 func (x *NodeInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[5]
+	mi := &file_metaserver_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -561,7 +560,7 @@ func (x *NodeInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeInfo.ProtoReflect.Descriptor instead.
 func (*NodeInfo) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{5}
+	return file_metaserver_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *NodeInfo) GetInode() uint64 {
@@ -631,7 +630,7 @@ type BlockLocations struct {
 
 func (x *BlockLocations) Reset() {
 	*x = BlockLocations{}
-	mi := &file_metaServer_proto_msgTypes[6]
+	mi := &file_metaserver_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -643,7 +642,7 @@ func (x *BlockLocations) String() string {
 func (*BlockLocations) ProtoMessage() {}
 
 func (x *BlockLocations) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[6]
+	mi := &file_metaserver_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -656,7 +655,7 @@ func (x *BlockLocations) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BlockLocations.ProtoReflect.Descriptor instead.
 func (*BlockLocations) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{6}
+	return file_metaserver_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *BlockLocations) GetBlockId() uint64 {
@@ -684,7 +683,7 @@ type SimpleResponse struct {
 
 func (x *SimpleResponse) Reset() {
 	*x = SimpleResponse{}
-	mi := &file_metaServer_proto_msgTypes[7]
+	mi := &file_metaserver_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -696,7 +695,7 @@ func (x *SimpleResponse) String() string {
 func (*SimpleResponse) ProtoMessage() {}
 
 func (x *SimpleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[7]
+	mi := &file_metaserver_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -709,7 +708,7 @@ func (x *SimpleResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SimpleResponse.ProtoReflect.Descriptor instead.
 func (*SimpleResponse) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{7}
+	return file_metaserver_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *SimpleResponse) GetSuccess() bool {
@@ -737,7 +736,7 @@ type CreateNodeRequest struct {
 
 func (x *CreateNodeRequest) Reset() {
 	*x = CreateNodeRequest{}
-	mi := &file_metaServer_proto_msgTypes[8]
+	mi := &file_metaserver_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -749,7 +748,7 @@ func (x *CreateNodeRequest) String() string {
 func (*CreateNodeRequest) ProtoMessage() {}
 
 func (x *CreateNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[8]
+	mi := &file_metaserver_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -762,7 +761,7 @@ func (x *CreateNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateNodeRequest.ProtoReflect.Descriptor instead.
 func (*CreateNodeRequest) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{8}
+	return file_metaserver_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CreateNodeRequest) GetPath() string {
@@ -789,7 +788,7 @@ type GetNodeInfoRequest struct {
 
 func (x *GetNodeInfoRequest) Reset() {
 	*x = GetNodeInfoRequest{}
-	mi := &file_metaServer_proto_msgTypes[9]
+	mi := &file_metaserver_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -801,7 +800,7 @@ func (x *GetNodeInfoRequest) String() string {
 func (*GetNodeInfoRequest) ProtoMessage() {}
 
 func (x *GetNodeInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[9]
+	mi := &file_metaserver_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -814,7 +813,7 @@ func (x *GetNodeInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetNodeInfoRequest.ProtoReflect.Descriptor instead.
 func (*GetNodeInfoRequest) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{9}
+	return file_metaserver_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *GetNodeInfoRequest) GetPath() string {
@@ -833,7 +832,7 @@ type GetNodeInfoResponse struct {
 
 func (x *GetNodeInfoResponse) Reset() {
 	*x = GetNodeInfoResponse{}
-	mi := &file_metaServer_proto_msgTypes[10]
+	mi := &file_metaserver_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -845,7 +844,7 @@ func (x *GetNodeInfoResponse) String() string {
 func (*GetNodeInfoResponse) ProtoMessage() {}
 
 func (x *GetNodeInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[10]
+	mi := &file_metaserver_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -858,7 +857,7 @@ func (x *GetNodeInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetNodeInfoResponse.ProtoReflect.Descriptor instead.
 func (*GetNodeInfoResponse) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{10}
+	return file_metaserver_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *GetNodeInfoResponse) GetStatInfo() *StatInfo {
@@ -878,7 +877,7 @@ type ListDirectoryRequest struct {
 
 func (x *ListDirectoryRequest) Reset() {
 	*x = ListDirectoryRequest{}
-	mi := &file_metaServer_proto_msgTypes[11]
+	mi := &file_metaserver_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -890,7 +889,7 @@ func (x *ListDirectoryRequest) String() string {
 func (*ListDirectoryRequest) ProtoMessage() {}
 
 func (x *ListDirectoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[11]
+	mi := &file_metaserver_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -903,7 +902,7 @@ func (x *ListDirectoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDirectoryRequest.ProtoReflect.Descriptor instead.
 func (*ListDirectoryRequest) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{11}
+	return file_metaserver_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListDirectoryRequest) GetPath() string {
@@ -922,7 +921,7 @@ type ListDirectoryResponse struct {
 
 func (x *ListDirectoryResponse) Reset() {
 	*x = ListDirectoryResponse{}
-	mi := &file_metaServer_proto_msgTypes[12]
+	mi := &file_metaserver_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -934,7 +933,7 @@ func (x *ListDirectoryResponse) String() string {
 func (*ListDirectoryResponse) ProtoMessage() {}
 
 func (x *ListDirectoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[12]
+	mi := &file_metaserver_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -947,7 +946,7 @@ func (x *ListDirectoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDirectoryResponse.ProtoReflect.Descriptor instead.
 func (*ListDirectoryResponse) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{12}
+	return file_metaserver_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ListDirectoryResponse) GetNodes() []*StatInfo {
@@ -968,7 +967,7 @@ type DeleteNodeRequest struct {
 
 func (x *DeleteNodeRequest) Reset() {
 	*x = DeleteNodeRequest{}
-	mi := &file_metaServer_proto_msgTypes[13]
+	mi := &file_metaserver_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -980,7 +979,7 @@ func (x *DeleteNodeRequest) String() string {
 func (*DeleteNodeRequest) ProtoMessage() {}
 
 func (x *DeleteNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[13]
+	mi := &file_metaserver_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -993,7 +992,7 @@ func (x *DeleteNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteNodeRequest.ProtoReflect.Descriptor instead.
 func (*DeleteNodeRequest) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{13}
+	return file_metaserver_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DeleteNodeRequest) GetPath() string {
@@ -1021,7 +1020,7 @@ type GetBlockLocationsRequest struct {
 
 func (x *GetBlockLocationsRequest) Reset() {
 	*x = GetBlockLocationsRequest{}
-	mi := &file_metaServer_proto_msgTypes[14]
+	mi := &file_metaserver_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1033,7 +1032,7 @@ func (x *GetBlockLocationsRequest) String() string {
 func (*GetBlockLocationsRequest) ProtoMessage() {}
 
 func (x *GetBlockLocationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[14]
+	mi := &file_metaserver_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1046,7 +1045,7 @@ func (x *GetBlockLocationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBlockLocationsRequest.ProtoReflect.Descriptor instead.
 func (*GetBlockLocationsRequest) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{14}
+	return file_metaserver_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetBlockLocationsRequest) GetPath() string {
@@ -1073,7 +1072,7 @@ type GetBlockLocationsResponse struct {
 
 func (x *GetBlockLocationsResponse) Reset() {
 	*x = GetBlockLocationsResponse{}
-	mi := &file_metaServer_proto_msgTypes[15]
+	mi := &file_metaserver_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1085,7 +1084,7 @@ func (x *GetBlockLocationsResponse) String() string {
 func (*GetBlockLocationsResponse) ProtoMessage() {}
 
 func (x *GetBlockLocationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[15]
+	mi := &file_metaserver_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1098,7 +1097,7 @@ func (x *GetBlockLocationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBlockLocationsResponse.ProtoReflect.Descriptor instead.
 func (*GetBlockLocationsResponse) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{15}
+	return file_metaserver_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetBlockLocationsResponse) GetInode() uint64 {
@@ -1128,7 +1127,7 @@ type FinalizeWriteRequest struct {
 
 func (x *FinalizeWriteRequest) Reset() {
 	*x = FinalizeWriteRequest{}
-	mi := &file_metaServer_proto_msgTypes[16]
+	mi := &file_metaserver_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1140,7 +1139,7 @@ func (x *FinalizeWriteRequest) String() string {
 func (*FinalizeWriteRequest) ProtoMessage() {}
 
 func (x *FinalizeWriteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[16]
+	mi := &file_metaserver_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1153,7 +1152,7 @@ func (x *FinalizeWriteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinalizeWriteRequest.ProtoReflect.Descriptor instead.
 func (*FinalizeWriteRequest) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{16}
+	return file_metaserver_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *FinalizeWriteRequest) GetPath() string {
@@ -1193,7 +1192,7 @@ type GetClusterInfoRequest struct {
 
 func (x *GetClusterInfoRequest) Reset() {
 	*x = GetClusterInfoRequest{}
-	mi := &file_metaServer_proto_msgTypes[17]
+	mi := &file_metaserver_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1205,7 +1204,7 @@ func (x *GetClusterInfoRequest) String() string {
 func (*GetClusterInfoRequest) ProtoMessage() {}
 
 func (x *GetClusterInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[17]
+	mi := &file_metaserver_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1218,7 +1217,7 @@ func (x *GetClusterInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetClusterInfoRequest.ProtoReflect.Descriptor instead.
 func (*GetClusterInfoRequest) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{17}
+	return file_metaserver_proto_rawDescGZIP(), []int{17}
 }
 
 type GetClusterInfoResponse struct {
@@ -1230,7 +1229,7 @@ type GetClusterInfoResponse struct {
 
 func (x *GetClusterInfoResponse) Reset() {
 	*x = GetClusterInfoResponse{}
-	mi := &file_metaServer_proto_msgTypes[18]
+	mi := &file_metaserver_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1242,7 +1241,7 @@ func (x *GetClusterInfoResponse) String() string {
 func (*GetClusterInfoResponse) ProtoMessage() {}
 
 func (x *GetClusterInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[18]
+	mi := &file_metaserver_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1255,7 +1254,7 @@ func (x *GetClusterInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetClusterInfoResponse.ProtoReflect.Descriptor instead.
 func (*GetClusterInfoResponse) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{18}
+	return file_metaserver_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GetClusterInfoResponse) GetClusterInfo() *ClusterInfo {
@@ -1268,8 +1267,8 @@ func (x *GetClusterInfoResponse) GetClusterInfo() *ClusterInfo {
 // Heartbeat (内部接口，保持不变以兼容DataServer)
 type HeartbeatRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	DataserverId   string                 `protobuf:"bytes,1,opt,name=dataServer_id,json=dataServerId,proto3" json:"dataServer_id,omitempty"`
-	DataserverAddr string                 `protobuf:"bytes,2,opt,name=dataServer_addr,json=dataServerAddr,proto3" json:"dataServer_addr,omitempty"`
+	DataServerId   string                 `protobuf:"bytes,1,opt,name=dataServer_id,json=dataServerId,proto3" json:"dataServer_id,omitempty"`
+	DataServerAddr string                 `protobuf:"bytes,2,opt,name=dataServer_addr,json=dataServerAddr,proto3" json:"dataServer_addr,omitempty"`
 	BlockCount     uint64                 `protobuf:"varint,3,opt,name=block_count,json=blockCount,proto3" json:"block_count,omitempty"`
 	FreeSpace      uint64                 `protobuf:"varint,4,opt,name=free_space,json=freeSpace,proto3" json:"free_space,omitempty"`
 	BlockIdsReport []uint64               `protobuf:"varint,5,rep,packed,name=block_ids_report,json=blockIdsReport,proto3" json:"block_ids_report,omitempty"`
@@ -1280,7 +1279,7 @@ type HeartbeatRequest struct {
 
 func (x *HeartbeatRequest) Reset() {
 	*x = HeartbeatRequest{}
-	mi := &file_metaServer_proto_msgTypes[19]
+	mi := &file_metaserver_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1292,7 +1291,7 @@ func (x *HeartbeatRequest) String() string {
 func (*HeartbeatRequest) ProtoMessage() {}
 
 func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[19]
+	mi := &file_metaserver_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1305,19 +1304,19 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{19}
+	return file_metaserver_proto_rawDescGZIP(), []int{19}
 }
 
-func (x *HeartbeatRequest) GetDataserverId() string {
+func (x *HeartbeatRequest) GetDataServerId() string {
 	if x != nil {
-		return x.DataserverId
+		return x.DataServerId
 	}
 	return ""
 }
 
-func (x *HeartbeatRequest) GetDataserverAddr() string {
+func (x *HeartbeatRequest) GetDataServerAddr() string {
 	if x != nil {
-		return x.DataserverAddr
+		return x.DataServerAddr
 	}
 	return ""
 }
@@ -1361,7 +1360,7 @@ type Command struct {
 
 func (x *Command) Reset() {
 	*x = Command{}
-	mi := &file_metaServer_proto_msgTypes[20]
+	mi := &file_metaserver_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1373,7 +1372,7 @@ func (x *Command) String() string {
 func (*Command) ProtoMessage() {}
 
 func (x *Command) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[20]
+	mi := &file_metaserver_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1386,7 +1385,7 @@ func (x *Command) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Command.ProtoReflect.Descriptor instead.
 func (*Command) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{20}
+	return file_metaserver_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Command) GetAction() Command_Action {
@@ -1419,7 +1418,7 @@ type HeartbeatResponse struct {
 
 func (x *HeartbeatResponse) Reset() {
 	*x = HeartbeatResponse{}
-	mi := &file_metaServer_proto_msgTypes[21]
+	mi := &file_metaserver_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1431,7 +1430,7 @@ func (x *HeartbeatResponse) String() string {
 func (*HeartbeatResponse) ProtoMessage() {}
 
 func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[21]
+	mi := &file_metaserver_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1444,7 +1443,7 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{21}
+	return file_metaserver_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *HeartbeatResponse) GetCommands() []*Command {
@@ -1464,7 +1463,7 @@ type GetReplicationInfoRequest struct {
 
 func (x *GetReplicationInfoRequest) Reset() {
 	*x = GetReplicationInfoRequest{}
-	mi := &file_metaServer_proto_msgTypes[22]
+	mi := &file_metaserver_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1476,7 +1475,7 @@ func (x *GetReplicationInfoRequest) String() string {
 func (*GetReplicationInfoRequest) ProtoMessage() {}
 
 func (x *GetReplicationInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[22]
+	mi := &file_metaserver_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1489,7 +1488,7 @@ func (x *GetReplicationInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetReplicationInfoRequest.ProtoReflect.Descriptor instead.
 func (*GetReplicationInfoRequest) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{22}
+	return file_metaserver_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *GetReplicationInfoRequest) GetPath() string {
@@ -1511,7 +1510,7 @@ type BlockReplicationInfo struct {
 
 func (x *BlockReplicationInfo) Reset() {
 	*x = BlockReplicationInfo{}
-	mi := &file_metaServer_proto_msgTypes[23]
+	mi := &file_metaserver_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1523,7 +1522,7 @@ func (x *BlockReplicationInfo) String() string {
 func (*BlockReplicationInfo) ProtoMessage() {}
 
 func (x *BlockReplicationInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[23]
+	mi := &file_metaserver_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1536,7 +1535,7 @@ func (x *BlockReplicationInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BlockReplicationInfo.ProtoReflect.Descriptor instead.
 func (*BlockReplicationInfo) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{23}
+	return file_metaserver_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *BlockReplicationInfo) GetBlockId() uint64 {
@@ -1582,7 +1581,7 @@ type ReplicationStatus struct {
 
 func (x *ReplicationStatus) Reset() {
 	*x = ReplicationStatus{}
-	mi := &file_metaServer_proto_msgTypes[24]
+	mi := &file_metaserver_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1594,7 +1593,7 @@ func (x *ReplicationStatus) String() string {
 func (*ReplicationStatus) ProtoMessage() {}
 
 func (x *ReplicationStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[24]
+	mi := &file_metaserver_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1607,7 +1606,7 @@ func (x *ReplicationStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicationStatus.ProtoReflect.Descriptor instead.
 func (*ReplicationStatus) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{24}
+	return file_metaserver_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ReplicationStatus) GetPath() string {
@@ -1672,7 +1671,7 @@ type GetReplicationInfoResponse struct {
 
 func (x *GetReplicationInfoResponse) Reset() {
 	*x = GetReplicationInfoResponse{}
-	mi := &file_metaServer_proto_msgTypes[25]
+	mi := &file_metaserver_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1684,7 +1683,7 @@ func (x *GetReplicationInfoResponse) String() string {
 func (*GetReplicationInfoResponse) ProtoMessage() {}
 
 func (x *GetReplicationInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[25]
+	mi := &file_metaserver_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1697,7 +1696,7 @@ func (x *GetReplicationInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetReplicationInfoResponse.ProtoReflect.Descriptor instead.
 func (*GetReplicationInfoResponse) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{25}
+	return file_metaserver_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetReplicationInfoResponse) GetFiles() []*ReplicationStatus {
@@ -1743,7 +1742,7 @@ type GetLeaderRequest struct {
 
 func (x *GetLeaderRequest) Reset() {
 	*x = GetLeaderRequest{}
-	mi := &file_metaServer_proto_msgTypes[26]
+	mi := &file_metaserver_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1755,7 +1754,7 @@ func (x *GetLeaderRequest) String() string {
 func (*GetLeaderRequest) ProtoMessage() {}
 
 func (x *GetLeaderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[26]
+	mi := &file_metaserver_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1768,7 +1767,7 @@ func (x *GetLeaderRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLeaderRequest.ProtoReflect.Descriptor instead.
 func (*GetLeaderRequest) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{26}
+	return file_metaserver_proto_rawDescGZIP(), []int{26}
 }
 
 type GetLeaderResponse struct {
@@ -1781,7 +1780,7 @@ type GetLeaderResponse struct {
 
 func (x *GetLeaderResponse) Reset() {
 	*x = GetLeaderResponse{}
-	mi := &file_metaServer_proto_msgTypes[27]
+	mi := &file_metaserver_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1793,7 +1792,7 @@ func (x *GetLeaderResponse) String() string {
 func (*GetLeaderResponse) ProtoMessage() {}
 
 func (x *GetLeaderResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[27]
+	mi := &file_metaserver_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1806,7 +1805,7 @@ func (x *GetLeaderResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetLeaderResponse.ProtoReflect.Descriptor instead.
 func (*GetLeaderResponse) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{27}
+	return file_metaserver_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *GetLeaderResponse) GetLeader() *MetaServerMsg {
@@ -1823,7 +1822,7 @@ func (x *GetLeaderResponse) GetFollowers() []*MetaServerMsg {
 	return nil
 }
 
-// WAL日志条目 (用于主从同步)
+// WAL日志条目 (用于主从同步) [已废弃]
 type LogEntry struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	LogIndex      uint64                 `protobuf:"varint,1,opt,name=log_index,json=logIndex,proto3" json:"log_index,omitempty"`                     // 日志序号
@@ -1837,7 +1836,7 @@ type LogEntry struct {
 
 func (x *LogEntry) Reset() {
 	*x = LogEntry{}
-	mi := &file_metaServer_proto_msgTypes[28]
+	mi := &file_metaserver_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1849,7 +1848,7 @@ func (x *LogEntry) String() string {
 func (*LogEntry) ProtoMessage() {}
 
 func (x *LogEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[28]
+	mi := &file_metaserver_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1862,7 +1861,7 @@ func (x *LogEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogEntry.ProtoReflect.Descriptor instead.
 func (*LogEntry) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{28}
+	return file_metaserver_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *LogEntry) GetLogIndex() uint64 {
@@ -1900,7 +1899,7 @@ func (x *LogEntry) GetChecksum() string {
 	return ""
 }
 
-// 创建节点操作的数据
+// 创建节点操作的数据 [已废弃]
 type CreateNodeOperation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
@@ -1912,7 +1911,7 @@ type CreateNodeOperation struct {
 
 func (x *CreateNodeOperation) Reset() {
 	*x = CreateNodeOperation{}
-	mi := &file_metaServer_proto_msgTypes[29]
+	mi := &file_metaserver_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1924,7 +1923,7 @@ func (x *CreateNodeOperation) String() string {
 func (*CreateNodeOperation) ProtoMessage() {}
 
 func (x *CreateNodeOperation) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[29]
+	mi := &file_metaserver_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1937,7 +1936,7 @@ func (x *CreateNodeOperation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateNodeOperation.ProtoReflect.Descriptor instead.
 func (*CreateNodeOperation) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{29}
+	return file_metaserver_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *CreateNodeOperation) GetPath() string {
@@ -1961,7 +1960,7 @@ func (x *CreateNodeOperation) GetInodeId() uint64 {
 	return 0
 }
 
-// 删除节点操作的数据
+// 删除节点操作的数据 [已废弃]
 type DeleteNodeOperation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
@@ -1972,7 +1971,7 @@ type DeleteNodeOperation struct {
 
 func (x *DeleteNodeOperation) Reset() {
 	*x = DeleteNodeOperation{}
-	mi := &file_metaServer_proto_msgTypes[30]
+	mi := &file_metaserver_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1984,7 +1983,7 @@ func (x *DeleteNodeOperation) String() string {
 func (*DeleteNodeOperation) ProtoMessage() {}
 
 func (x *DeleteNodeOperation) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[30]
+	mi := &file_metaserver_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1997,7 +1996,7 @@ func (x *DeleteNodeOperation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteNodeOperation.ProtoReflect.Descriptor instead.
 func (*DeleteNodeOperation) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{30}
+	return file_metaserver_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *DeleteNodeOperation) GetPath() string {
@@ -2014,7 +2013,7 @@ func (x *DeleteNodeOperation) GetRecursive() bool {
 	return false
 }
 
-// 更新节点操作的数据
+// 更新节点操作的数据 [已废弃]
 type UpdateNodeOperation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
@@ -2026,7 +2025,7 @@ type UpdateNodeOperation struct {
 
 func (x *UpdateNodeOperation) Reset() {
 	*x = UpdateNodeOperation{}
-	mi := &file_metaServer_proto_msgTypes[31]
+	mi := &file_metaserver_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2038,7 +2037,7 @@ func (x *UpdateNodeOperation) String() string {
 func (*UpdateNodeOperation) ProtoMessage() {}
 
 func (x *UpdateNodeOperation) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[31]
+	mi := &file_metaserver_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2051,7 +2050,7 @@ func (x *UpdateNodeOperation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateNodeOperation.ProtoReflect.Descriptor instead.
 func (*UpdateNodeOperation) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{31}
+	return file_metaserver_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *UpdateNodeOperation) GetPath() string {
@@ -2075,7 +2074,7 @@ func (x *UpdateNodeOperation) GetMtime() int64 {
 	return 0
 }
 
-// 完成写入操作的数据
+// 完成写入操作的数据 [已废弃]
 type FinalizeWriteOperation struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Path           string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
@@ -2089,7 +2088,7 @@ type FinalizeWriteOperation struct {
 
 func (x *FinalizeWriteOperation) Reset() {
 	*x = FinalizeWriteOperation{}
-	mi := &file_metaServer_proto_msgTypes[32]
+	mi := &file_metaserver_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2101,7 +2100,7 @@ func (x *FinalizeWriteOperation) String() string {
 func (*FinalizeWriteOperation) ProtoMessage() {}
 
 func (x *FinalizeWriteOperation) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[32]
+	mi := &file_metaserver_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2114,7 +2113,7 @@ func (x *FinalizeWriteOperation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinalizeWriteOperation.ProtoReflect.Descriptor instead.
 func (*FinalizeWriteOperation) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{32}
+	return file_metaserver_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *FinalizeWriteOperation) GetPath() string {
@@ -2152,7 +2151,7 @@ func (x *FinalizeWriteOperation) GetMd5() string {
 	return ""
 }
 
-// 更新块位置信息的数据
+// 更新块位置信息的数据 [已废弃]
 type UpdateBlockLocationOperation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BlockId       uint64                 `protobuf:"varint,1,opt,name=block_id,json=blockId,proto3" json:"block_id,omitempty"` // 块ID
@@ -2164,7 +2163,7 @@ type UpdateBlockLocationOperation struct {
 
 func (x *UpdateBlockLocationOperation) Reset() {
 	*x = UpdateBlockLocationOperation{}
-	mi := &file_metaServer_proto_msgTypes[33]
+	mi := &file_metaserver_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2176,7 +2175,7 @@ func (x *UpdateBlockLocationOperation) String() string {
 func (*UpdateBlockLocationOperation) ProtoMessage() {}
 
 func (x *UpdateBlockLocationOperation) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[33]
+	mi := &file_metaserver_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2189,7 +2188,7 @@ func (x *UpdateBlockLocationOperation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateBlockLocationOperation.ProtoReflect.Descriptor instead.
 func (*UpdateBlockLocationOperation) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{33}
+	return file_metaserver_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *UpdateBlockLocationOperation) GetBlockId() uint64 {
@@ -2213,7 +2212,7 @@ func (x *UpdateBlockLocationOperation) GetNewAddr() string {
 	return ""
 }
 
-// 设置块映射关系的数据
+// 设置块映射关系的数据 [已废弃]
 type SetBlockMappingOperation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	InodeId       uint64                 `protobuf:"varint,1,opt,name=inode_id,json=inodeId,proto3" json:"inode_id,omitempty"`          // 文件inode ID
@@ -2225,7 +2224,7 @@ type SetBlockMappingOperation struct {
 
 func (x *SetBlockMappingOperation) Reset() {
 	*x = SetBlockMappingOperation{}
-	mi := &file_metaServer_proto_msgTypes[34]
+	mi := &file_metaserver_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2237,7 +2236,7 @@ func (x *SetBlockMappingOperation) String() string {
 func (*SetBlockMappingOperation) ProtoMessage() {}
 
 func (x *SetBlockMappingOperation) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[34]
+	mi := &file_metaserver_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2250,7 +2249,7 @@ func (x *SetBlockMappingOperation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetBlockMappingOperation.ProtoReflect.Descriptor instead.
 func (*SetBlockMappingOperation) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{34}
+	return file_metaserver_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *SetBlockMappingOperation) GetInodeId() uint64 {
@@ -2274,7 +2273,7 @@ func (x *SetBlockMappingOperation) GetBlockLocs() *BlockLocations {
 	return nil
 }
 
-// 请求WAL同步的消息
+// 请求WAL同步的消息 [已废弃]
 type RequestWALSyncRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`                      // 请求同步的节点ID
@@ -2286,7 +2285,7 @@ type RequestWALSyncRequest struct {
 
 func (x *RequestWALSyncRequest) Reset() {
 	*x = RequestWALSyncRequest{}
-	mi := &file_metaServer_proto_msgTypes[35]
+	mi := &file_metaserver_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2298,7 +2297,7 @@ func (x *RequestWALSyncRequest) String() string {
 func (*RequestWALSyncRequest) ProtoMessage() {}
 
 func (x *RequestWALSyncRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_metaServer_proto_msgTypes[35]
+	mi := &file_metaserver_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2311,7 +2310,7 @@ func (x *RequestWALSyncRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestWALSyncRequest.ProtoReflect.Descriptor instead.
 func (*RequestWALSyncRequest) Descriptor() ([]byte, []int) {
-	return file_metaServer_proto_rawDescGZIP(), []int{35}
+	return file_metaserver_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *RequestWALSyncRequest) GetNodeId() string {
@@ -2335,11 +2334,11 @@ func (x *RequestWALSyncRequest) GetReason() string {
 	return ""
 }
 
-var File_metaServer_proto protoreflect.FileDescriptor
+var File_metaserver_proto protoreflect.FileDescriptor
 
-const file_metaServer_proto_rawDesc = "" +
+const file_metaserver_proto_rawDesc = "" +
 	"\n" +
-	"\x10metaServer.proto\x12\vdfs_project\"I\n" +
+	"\x10metaserver.proto\x12\vdfs_project\"I\n" +
 	"\vReplicaData\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06dsNode\x18\x02 \x01(\tR\x06dsNode\x12\x12\n" +
@@ -2521,20 +2520,20 @@ const file_metaServer_proto_rawDesc = "" +
 	"\tGetLeader\x12\x1d.dfs_project.GetLeaderRequest\x1a\x1e.dfs_project.GetLeaderResponseB\x06Z\x04./pbb\x06proto3"
 
 var (
-	file_metaServer_proto_rawDescOnce sync.Once
-	file_metaServer_proto_rawDescData []byte
+	file_metaserver_proto_rawDescOnce sync.Once
+	file_metaserver_proto_rawDescData []byte
 )
 
-func file_metaServer_proto_rawDescGZIP() []byte {
-	file_metaServer_proto_rawDescOnce.Do(func() {
-		file_metaServer_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_metaServer_proto_rawDesc), len(file_metaServer_proto_rawDesc)))
+func file_metaserver_proto_rawDescGZIP() []byte {
+	file_metaserver_proto_rawDescOnce.Do(func() {
+		file_metaserver_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_metaserver_proto_rawDesc), len(file_metaserver_proto_rawDesc)))
 	})
-	return file_metaServer_proto_rawDescData
+	return file_metaserver_proto_rawDescData
 }
 
-var file_metaServer_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_metaServer_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
-var file_metaServer_proto_goTypes = []any{
+var file_metaserver_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_metaserver_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
+var file_metaserver_proto_goTypes = []any{
 	(FileType)(0),                        // 0: dfs_project.FileType
 	(WALOperationType)(0),                // 1: dfs_project.WALOperationType
 	(Command_Action)(0),                  // 2: dfs_project.Command.Action
@@ -2575,7 +2574,7 @@ var file_metaServer_proto_goTypes = []any{
 	(*SetBlockMappingOperation)(nil),     // 37: dfs_project.SetBlockMappingOperation
 	(*RequestWALSyncRequest)(nil),        // 38: dfs_project.RequestWALSyncRequest
 }
-var file_metaServer_proto_depIdxs = []int32{
+var file_metaserver_proto_depIdxs = []int32{
 	0,  // 0: dfs_project.StatInfo.type:type_name -> dfs_project.FileType
 	3,  // 1: dfs_project.StatInfo.replicaData:type_name -> dfs_project.ReplicaData
 	5,  // 2: dfs_project.ClusterInfo.masterMetaServer:type_name -> dfs_project.MetaServerMsg
@@ -2629,27 +2628,27 @@ var file_metaServer_proto_depIdxs = []int32{
 	0,  // [0:22] is the sub-list for field type_name
 }
 
-func init() { file_metaServer_proto_init() }
-func file_metaServer_proto_init() {
-	if File_metaServer_proto != nil {
+func init() { file_metaserver_proto_init() }
+func file_metaserver_proto_init() {
+	if File_metaserver_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_metaServer_proto_rawDesc), len(file_metaServer_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_metaserver_proto_rawDesc), len(file_metaserver_proto_rawDesc)),
 			NumEnums:      3,
 			NumMessages:   36,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_metaServer_proto_goTypes,
-		DependencyIndexes: file_metaServer_proto_depIdxs,
-		EnumInfos:         file_metaServer_proto_enumTypes,
-		MessageInfos:      file_metaServer_proto_msgTypes,
+		GoTypes:           file_metaserver_proto_goTypes,
+		DependencyIndexes: file_metaserver_proto_depIdxs,
+		EnumInfos:         file_metaserver_proto_enumTypes,
+		MessageInfos:      file_metaserver_proto_msgTypes,
 	}.Build()
-	File_metaServer_proto = out.File
-	file_metaServer_proto_goTypes = nil
-	file_metaServer_proto_depIdxs = nil
+	File_metaserver_proto = out.File
+	file_metaserver_proto_goTypes = nil
+	file_metaserver_proto_depIdxs = nil
 }

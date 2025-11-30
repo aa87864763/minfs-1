@@ -31,8 +31,8 @@ type ClusterService struct {
 	// etcd 服务发现
 	etcdService *EtcdService
 
-	// Leader Election 服务
-	leaderElection *LeaderElection
+	// Raft 服务（用于 Leader 选举）
+	raftService *RaftService
 
 	// 块复制完成回调
 	replicationCallback BlockReplicationCallback
@@ -66,9 +66,14 @@ func NewClusterService(config *model.Config) *ClusterService {
 	return cs
 }
 
-// SetLeaderElection 设置Leader Election服务
-func (cs *ClusterService) SetLeaderElection(le *LeaderElection) {
-	cs.leaderElection = le
+// SetRaftService 设置 Raft 服务
+func (cs *ClusterService) SetRaftService(rs *RaftService) {
+	cs.raftService = rs
+}
+
+// SetEtcdService 设置 etcd 服务（用于服务发现）
+func (cs *ClusterService) SetEtcdService(es *EtcdService) {
+	cs.etcdService = es
 }
 
 // SetReplicationCallback 设置块复制完成回调
@@ -78,10 +83,10 @@ func (cs *ClusterService) SetReplicationCallback(callback BlockReplicationCallba
 
 // IsLeader 检查当前节点是否为leader
 func (cs *ClusterService) IsLeader() bool {
-	if cs.leaderElection == nil {
+	if cs.raftService == nil {
 		return false
 	}
-	return cs.leaderElection.IsLeader()
+	return cs.raftService.IsLeader()
 }
 
 // startHealthCheck 启动健康检查goroutine
@@ -135,15 +140,15 @@ func (cs *ClusterService) ProcessHeartbeat(req *pb.HeartbeatRequest) (*pb.Heartb
 	cs.mutex.Lock()
 
 	// 更新或创建 DataServer 信息
-	ds, exists := cs.dataServers[req.DataserverId]
+	ds, exists := cs.dataServers[req.DataServerId]
 	if !exists {
 		ds = &model.DataServerInfo{
-			ID:             req.DataserverId,
-			Addr:           req.DataserverAddr,
+			ID:             req.DataServerId,
+			Addr:           req.DataServerAddr,
 			ReportedBlocks: make(map[uint64]bool),
 		}
-		cs.dataServers[req.DataserverId] = ds
-		log.Printf("New DataServer registered: %s at %s", req.DataserverId, req.DataserverAddr)
+		cs.dataServers[req.DataServerId] = ds
+		log.Printf("New DataServer registered: %s at %s", req.DataServerId, req.DataServerAddr)
 	}
 
 	// 更新状态和块报告
@@ -153,7 +158,7 @@ func (cs *ClusterService) ProcessHeartbeat(req *pb.HeartbeatRequest) (*pb.Heartb
 	// 如果节点从不健康状态恢复，重置永久宕机标志
 	if wasUnhealthy {
 		ds.RecoverToHealthy()
-		log.Printf("DataServer %s recovered to healthy state", req.DataserverId)
+		log.Printf("DataServer %s recovered to healthy state", req.DataServerId)
 	}
 
 	newBlocks := ds.UpdateReportedBlocks(req.BlockIdsReport)
@@ -162,15 +167,15 @@ func (cs *ClusterService) ProcessHeartbeat(req *pb.HeartbeatRequest) (*pb.Heartb
 	// 如果有回调函数且有新增的块，触发回调
 	if cs.replicationCallback != nil && len(newBlocks) > 0 {
 		for _, blockID := range newBlocks {
-			cs.replicationCallback(blockID, req.DataserverAddr, true)
+			cs.replicationCallback(blockID, req.DataServerAddr, true)
 		}
 	}
 
 	// 获取待下发的命令
 	cs.commandMutex.Lock()
-	commands := cs.pendingCommands[req.DataserverId]
+	commands := cs.pendingCommands[req.DataServerId]
 	// 清空已下发的命令
-	delete(cs.pendingCommands, req.DataserverId)
+	delete(cs.pendingCommands, req.DataServerId)
 	cs.commandMutex.Unlock()
 
 	// 转换为 protobuf 格式
@@ -192,7 +197,7 @@ func (cs *ClusterService) ProcessHeartbeat(req *pb.HeartbeatRequest) (*pb.Heartb
 	}
 
 	log.Printf("Heartbeat from %s: %d blocks, %d MB free, %d commands sent",
-		req.DataserverId, req.BlockCount, req.FreeSpace/1024/1024, len(pbCommands))
+		req.DataServerId, req.BlockCount, req.FreeSpace/1024/1024, len(pbCommands))
 
 	return &pb.HeartbeatResponse{
 		Commands: pbCommands,
@@ -367,11 +372,31 @@ func (cs *ClusterService) GetClusterInfo() *pb.ClusterInfo {
 	var masterMetaServer *pb.MetaServerMsg
 	var slaveMetaServers []*pb.MetaServerMsg
 
-	if cs.leaderElection != nil {
-		masterMetaServer = cs.leaderElection.GetCurrentLeader()
-		slaveMetaServers = cs.leaderElection.GetFollowers()
+	if cs.raftService != nil {
+		// 从 Raft 获取 Leader 信息
+		_, leaderID := cs.raftService.GetLeader()
+		
+		// 从配置文件获取所有节点的 gRPC 地址
+		if cs.config != nil && len(cs.config.Raft.Peers) > 0 {
+			for _, peer := range cs.config.Raft.Peers {
+				host, port := cs.parseAddr(peer.GrpcAddr)
+				metaServerMsg := &pb.MetaServerMsg{
+					Host: host,
+					Port: port,
+				}
+				
+				if peer.ID == string(leaderID) {
+					// 这是 Leader 节点
+					masterMetaServer = metaServerMsg
+					log.Printf("[ClusterInfo] Leader: %s at gRPC %s", leaderID, peer.GrpcAddr)
+				} else {
+					// 这是 Follower 节点
+					slaveMetaServers = append(slaveMetaServers, metaServerMsg)
+				}
+			}
+		}
 	} else {
-		// 如果没有选举服务，返回默认值
+		// 如果没有 Raft 服务，返回默认值
 		masterMetaServer = &pb.MetaServerMsg{
 			Host: "localhost",
 			Port: 8080,
