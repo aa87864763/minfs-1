@@ -211,43 +211,61 @@ start_etcd() {
     wait_for_service "localhost" "2379" "etcd"
 }
 
-# 启动 MetaServers (3个实例，1主2从)
+# 启动 MetaServers (3个实例 Raft 集群)
 start_metaServers() {
-    log_step "Starting MetaServers (3 instances for HA)..."
+    log_step "Starting MetaServers (3-node Raft cluster)..."
     
     cd "$METASERVER_DIR"
     
-    for i in {1..3}; do
-        local port=$((9089 + i))
+    # 节点配置
+    declare -a nodes=(
+        "1:9090:10090:meta-9090"
+        "2:9091:10091:meta-9091"
+        "3:9092:10092:meta-9092"
+    )
+    
+    # 第一步：快速启动所有 3 个节点（不等待）
+    log_info "Launching all 3 MetaServer nodes simultaneously..."
+    for node_info in "${nodes[@]}"; do
+        IFS=':' read -r i grpc_port raft_port node_id <<< "$node_info"
+        
         local instance="metaServer${i}"
-        local node_id="metaServer-${port}"
         local data_dir="./metadb${i}"
         
         if check_process "$METASERVER_DIR/pid/${instance}.pid" "MetaServer-${i}"; then
+            log_info "MetaServer-${i} already running, skipping"
             continue
         fi
         
-        log_info "Starting MetaServer-${i} on port ${port}..."
+        log_info "Launching MetaServer-${i} (gRPC:${grpc_port}, Raft:${raft_port}, ID:${node_id})..."
         
         # 确保数据目录存在
         mkdir -p "${data_dir}"
+        mkdir -p "${data_dir}/raft"
         
+        # 所有节点都使用 --bootstrap（首次启动时）
+        # Raft 集群要求所有节点同时启动才能形成 quorum
         nohup ./metaServer \
-            -config=config.yaml \
-            -port=${port} \
-            -node-id="${node_id}" \
-            -data-dir="${data_dir}" \
+            --config=config.yaml \
+            --port=${grpc_port} \
+            --raft-port=${raft_port} \
+            --node-id="${node_id}" \
+            --data-dir="${data_dir}" \
+            --bootstrap \
             > "logs/${instance}.log" 2>&1 &
         
         echo $! > "pid/${instance}.pid"
-        
-        # 等待 MetaServer 启动
-        wait_for_service "localhost" "${port}" "MetaServer-${i}"
-        
-        sleep 1  # 稍微延迟，避免同时启动造成资源竞争
     done
     
-    log_info "All MetaServers started successfully!"
+    # 第二步：等待所有节点的 gRPC 端口就绪
+    log_info "Waiting for all MetaServer gRPC ports to be ready..."
+    for node_info in "${nodes[@]}"; do
+        IFS=':' read -r i grpc_port raft_port node_id <<< "$node_info"
+        wait_for_service "localhost" "${grpc_port}" "MetaServer-${i}"
+    done
+    
+    log_info "All MetaServers started successfully! Waiting for Raft cluster to elect leader..."
+    sleep 5  # 给 Raft 集群足够时间进行选举
 }
 
 # 启动 DataServers (4个实例)

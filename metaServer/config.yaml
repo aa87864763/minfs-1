@@ -15,11 +15,31 @@ cluster:
   heartbeat_timeout: 10s      # 心跳超时时间 - 减少到10秒
   permanent_down_threshold: 10s # 永久宕机判断阈值 - 减少到10秒
 
-# etcd 配置
+# etcd 配置（用于 DataServer 服务发现）
 etcd:
   endpoints: ["localhost:2379"]  # etcd 集群地址
   timeout: 5s                    # 连接超时时间
   dataServer_key_prefix: "/dfs/dataServers/"  # DataServer 注册key前缀
+
+# Raft 配置（用于 MetaServer 集群共识）
+raft:
+  # 集群节点列表（用于 Bootstrap）
+  peers:
+    - id: "meta-9090"
+      raft_addr: "localhost:10090"
+      grpc_addr: "localhost:9090"
+    - id: "meta-9091"
+      raft_addr: "localhost:10091"
+      grpc_addr: "localhost:9091"
+    - id: "meta-9092"
+      raft_addr: "localhost:10092"
+      grpc_addr: "localhost:9092"
+  
+  # Raft 参数
+  heartbeat_timeout: 1s
+  election_timeout: 1s
+  snapshot_interval: 120s
+  snapshot_threshold: 8192
   
 # 调度配置
 scheduler:

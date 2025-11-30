@@ -40,10 +40,12 @@ service MetaServerService {
 
     // === 3. HA 支持接口 ===
 
-    // 用于主从节点之间，实时同步元数据操作日志 (WAL)
+    // [已废弃 - Raft 模式下由 Raft 内部自动处理，调用会返回错误]
+    // 保留此接口仅为兼容旧版 easyClient，实际不再使用
     rpc SyncWAL(stream LogEntry) returns (SimpleResponse);
     
-    // 节点重连后向leader申请WAL同步
+    // [已废弃 - Raft 模式下由 Raft 内部自动处理，调用会返回错误]
+    // 保留此接口仅为兼容旧版 easyClient，实际不再使用
     rpc RequestWALSync(RequestWALSyncRequest) returns (stream LogEntry);
     
     // 获取主从信息 (HA 支持)
@@ -244,7 +246,11 @@ message GetLeaderResponse {
     repeated MetaServerMsg followers = 2;
 }
 
-// WAL操作类型枚举
+// ==================== 以下为已废弃的 WAL 相关定义 ====================
+// 注意: Raft 模式下，WAL 由 hashicorp/raft 内部管理，不再使用这些定义
+// 保留这些定义仅为了与旧版 easyClient 的兼容性
+
+// WAL操作类型枚举 [已废弃]
 enum WALOperationType {
     CREATE_NODE = 0;           // 创建文件或目录
     DELETE_NODE = 1;           // 删除文件或目录
@@ -254,7 +260,7 @@ enum WALOperationType {
     SET_BLOCK_MAPPING = 5;     // 设置文件块映射关系
 }
 
-// WAL日志条目 (用于主从同步)
+// WAL日志条目 (用于主从同步) [已废弃]
 message LogEntry {
     uint64 log_index = 1;              // 日志序号
     int64 timestamp = 2;               // 时间戳
@@ -263,27 +269,27 @@ message LogEntry {
     string checksum = 5;               // 数据校验和
 }
 
-// 创建节点操作的数据
+// 创建节点操作的数据 [已废弃]
 message CreateNodeOperation {
     string path = 1;
     FileType type = 2;
     uint64 inode_id = 3;  // 实际分配的inode ID
 }
 
-// 删除节点操作的数据
+// 删除节点操作的数据 [已废弃]
 message DeleteNodeOperation {
     string path = 1;
     bool recursive = 2;
 }
 
-// 更新节点操作的数据
+// 更新节点操作的数据 [已废弃]
 message UpdateNodeOperation {
     string path = 1;
     int64 size = 2;
     int64 mtime = 3;
 }
 
-// 完成写入操作的数据
+// 完成写入操作的数据 [已废弃]
 message FinalizeWriteOperation {
     string path = 1;
     repeated BlockLocations block_locations = 2;
@@ -292,21 +298,21 @@ message FinalizeWriteOperation {
     string md5 = 5;
 }
 
-// 更新块位置信息的数据
+// 更新块位置信息的数据 [已废弃]
 message UpdateBlockLocationOperation {
     uint64 block_id = 1;   // 块ID
     string old_addr = 2;   // 原地址
     string new_addr = 3;   // 新地址
 }
 
-// 设置块映射关系的数据
+// 设置块映射关系的数据 [已废弃]
 message SetBlockMappingOperation {
     uint64 inode_id = 1;       // 文件inode ID
     uint64 block_index = 2;    // 块索引
     BlockLocations block_locs = 3;  // 块位置信息
 }
 
-// 请求WAL同步的消息
+// 请求WAL同步的消息 [已废弃]
 message RequestWALSyncRequest {
     string node_id = 1;        // 请求同步的节点ID
     uint64 last_log_index = 2; // 最后同步的日志索引，0表示从头开始

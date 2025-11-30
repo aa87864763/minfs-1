@@ -23,6 +23,8 @@ SDKCLITest.class
 /metaserver/metadb2
 /metaserver/metadb3
 /etcd-data
+/benchmark
+/workpublish
 
 # Test binary, built with `go test -c`
 *.test
